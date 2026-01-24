@@ -1,0 +1,543 @@
+I'll build the comprehensive LLM-augmented CIS-Code Scaffold with all 15 critical additions. This will be a production-ready system that transforms LLM-assisted development.
+
+```python
+"""
+CIS-Code Scaffold v2.0: Production-Ready Architecture with Intelligent LLM Orchestration
+Enhanced with 15 critical LLM-aid patterns for maximum effectiveness
+"""
+
+import ast
+import json
+import uuid
+import copy
+import hashlib
+from datetime import datetime
+from dataclasses import dataclass, field
+from typing import Dict, List, Any, Optional, Iterator, Tuple
+from abc import ABC, abstractmethod
+import pandas as pd
+import numpy as np
+from collections import defaultdict
+
+# ============================================================================
+# ENHANCED SUPPORTING CLASSES
+# ============================================================================
+
+@dataclass
+class Contract:
+    """Enhanced contract with constraint tracking"""
+    name: str
+    type: str
+    requirements: Dict[str, Any]
+    generated_at: datetime
+    interface: str = ""
+    constraints: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    compliance_level: str = "high"
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+@dataclass
+class Implementation:
+    """Enhanced implementation with confidence tracking"""
+    code: str
+    contract_id: str
+    generated_at: datetime
+    validation_score: float = 0.0
+    confidence: float = 0.0
+    model_used: str = ""
+    prompt_version: str = ""
+
+class ValidationResult:
+    """Enhanced validation with line-specific errors"""
+    def __init__(self, passed: bool, errors: List[Dict[str, Any]] = None):
+        self.passed = passed
+        self.errors = errors or []
+        
+    def has_critical_errors(self) -> bool:
+        return any(e.get("severity") == "critical" for e in self.errors)
+
+# ============================================================================
+# CRITICAL ADDITION 1: ADAPTIVE TOKEN BUDGET
+# ============================================================================
+
+class AdaptiveTokenBudget:
+    """Dynamically allocate token budget across context sections"""
+    
+    BUDGET_ALLOCATION = {
+        "contract_interface": 0.20,      # Always prioritize
+        "constraints": 0.15,
+        "working_examples": 0.25,        # LLMs learn best from examples
+        "dependencies": 0.15,
+        "error_context": 0.15,           # Previous errors if retry
+        "system_context": 0.10
+    }
+    
+    def __init__(self, max_tokens: int = 128000):
+        self.max_tokens = max_tokens
+        self.usage_history = []
+    
+    def allocate_tokens(self, task_type: str, retry_count: int = 0) -> Dict[str, int]:
+        """Adjust allocation based on task complexity and retry status"""
+        adjusted = self.BUDGET_ALLOCATION.copy()
+        
+        if retry_count > 0:
+            # Increase error context on retry
+            adjusted["error_context"] = 0.30
+            adjusted["working_examples"] = 0.15
+        
+        if task_type == "contract_generation":
+            adjusted["contract_interface"] = 0.35
+            adjusted["system_context"] = 0.05
+        
+        if task_type == "debugging":
+            adjusted["error_context"] = 0.40
+            adjusted["working_examples"] = 0.20
+        
+        # Calculate token counts
+        allocation = {}
+        for section, percentage in adjusted.items():
+            allocation[section] = int(self.max_tokens * percentage)
+        
+        self.usage_history.append({
+            "task_type": task_type,
+            "retry_count": retry_count,
+            "allocation": allocation,
+            "timestamp": datetime.now()
+        })
+        
+        return allocation
+    
+    def compress_context(self, context: Dict[str, Any], target_tokens: int) -> Dict[str, Any]:
+        """Intelligently compress context to fit token budget"""
+        compressed = {}
+        
+        for section, content in context.items():
+            if isinstance(content, str) and len(content) > 1000:
+                # Truncate long sections intelligently
+                if section == "working_examples":
+                    compressed[section] = self._truncate_examples(content, target_tokens // 3)
+                elif section == "error_context":
+                    compressed[section] = self._summarize_errors(content)
+                else:
+                    compressed[section] = content[:target_tokens // 2]
+            else:
+                compressed[section] = content
+        
+        return compressed
+    
+    def _truncate_examples(self, examples: str, max_chars: int) -> str:
+        """Truncate examples while preserving key patterns"""
+        lines = examples.split('\n')
+        important_lines = [l for l in lines if any(marker in l.lower() 
+                          for marker in ['def ', 'class ', 'import ', '# critical', '@'])]
+        
+        if len(important_lines) > 10:
+            important_lines = important_lines[:10]
+        
+        truncated = '\n'.join(important_lines)
+        if len(truncated) > max_chars:
+            truncated = truncated[:max_chars] + "\n# ... truncated for token budget"
+        
+        return truncated
+    
+    def _summarize_errors(self, errors: str) -> str:
+        """Summarize error context"""
+        if len(errors) < 500:
+            return errors
+        
+        # Extract just error types and fixes
+        lines = errors.split('\n')
+        summary = []
+        for line in lines:
+            if 'ERROR:' in line or 'FIX:' in line or 'Line' in line:
+                summary.append(line)
+        
+        return '\n'.join(summary[:20])  # Keep top 20 errors
+
+# ============================================================================
+# CRITICAL ADDITION 2: ERROR PATTERN ANALYZER
+# ============================================================================
+
+class ErrorPatternAnalyzer:
+    """Learn from repeated validation failures to improve prompts"""
+    
+    def __init__(self):
+        self.error_patterns = defaultdict(list)
+        self.fix_templates = defaultdict(list)
+        self.retry_success_rates = {}
+    
+    def record_error_cycle(self, error_type: str, code_before: str, 
+                          code_after: str, success: bool, context: Dict[str, Any]):
+        """Build a library of error->fix patterns"""
+        
+        if success:
+            # Extract the fix pattern
+            fix_pattern = self._extract_diff_pattern(code_before, code_after)
+            context_hash = hashlib.md5(json.dumps(context, sort_keys=True).encode()).hexdigest()[:8]
+            
+            pattern_id = f"{error_type}_{context_hash}"
+            
+            self.fix_templates[error_type].append({
+                "pattern_id": pattern_id,
+                "fix_pattern": fix_pattern,
+                "fix_code": code_after,
+                "context": context,
+                "timestamp": datetime.now(),
+                "usage_count": 0
+            })
+            
+            # Keep only top 5 fixes per error type
+            if len(self.fix_templates[error_type]) > 5:
+                self.fix_templates[error_type] = sorted(
+                    self.fix_templates[error_type],
+                    key=lambda x: x["usage_count"],
+                    reverse=True
+                )[:5]
+    
+    def generate_targeted_fix_prompt(self, error: Dict[str, Any], 
+                                    current_code: str, context: Dict[str, Any]) -> str:
+        """Use historical fixes to guide LLM with specific patterns"""
+        
+        error_type = error.get("type", "unknown")
+        similar_fixes = self._find_similar_fixes(error_type, context)
+        
+        if not similar_fixes:
+            return self._generate_generic_fix_prompt(error, current_code)
+        
+        # Increment usage count for successful patterns
+        for fix in similar_fixes:
+            fix["usage_count"] += 1
+        
+        return f"""
+# SPECIFIC FIX REQUIRED: {error_type.upper()}
+# Error: {error.get('message', 'Unknown error')}
+# Location: Line {error.get('line', 'unknown')}
+
+## PREVIOUSLY SUCCESSFUL FIXES FOR THIS ERROR:
+
+{self._format_fix_examples(similar_fixes)}
+
+## YOUR CURRENT CODE (WITH ERROR):
+
+{self._annotate_error_in_code(current_code, error)}
+
+## REQUIRED ACTION:
+Apply the most relevant fix pattern from above to your code.
+Focus on correcting: {error.get('fix_suggestion', 'the identified issue')}
+
+## CONSTRAINTS TO MAINTAIN:
+{context.get('constraints_summary', 'All original constraints apply')}
+
+## GENERATE CORRECTED CODE:
+"""
+    
+    def _extract_diff_pattern(self, before: str, after: str) -> Dict[str, Any]:
+        """Extract the minimal change pattern from before/after code"""
+        # Simplified diff extraction - in production use difflib
+        before_lines = before.split('\n')
+        after_lines = after.split('\n')
+        
+        pattern = {
+            "changed_lines": [],
+            "pattern_type": "unknown",
+            "structural_change": False
+        }
+        
+        for i, (b, a) in enumerate(zip(before_lines, after_lines)):
+            if b != a:
+                pattern["changed_lines"].append({
+                    "line": i + 1,
+                    "before": b[:100],  # Truncate
+                    "after": a[:100]
+                })
+        
+        return pattern
+    
+    def _find_similar_fixes(self, error_type: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Find fixes for similar errors in similar context"""
+        fixes = self.fix_templates.get(error_type, [])
+        
+        if not fixes:
+            # Try to find similar error types
+            for et in self.fix_templates.keys():
+                if error_type in et or et in error_type:
+                    fixes.extend(self.fix_templates[et])
+        
+        # Sort by usage count (most successful first)
+        return sorted(fixes, key=lambda x: x["usage_count"], reverse=True)[:3]
+    
+    def _format_fix_examples(self, fixes: List[Dict[str, Any]]) -> str:
+        """Format fix examples for prompt inclusion"""
+        formatted = []
+        for i, fix in enumerate(fixes, 1):
+            pattern = fix.get("fix_pattern", {})
+            formatted.append(f"""
+### Fix Pattern #{i} (Used {fix['usage_count']} times successfully):
+**Change Type:** {pattern.get('pattern_type', 'unknown')}
+**Lines Changed:** {len(pattern.get('changed_lines', []))}
+
+**Before:**
+```python
+{self._extract_before_snippet(fix.get('fix_code', ''))}
+```
+
+After:
+
+```python
+{self._extract_after_snippet(fix.get('fix_code', ''))}
+```
+
+Context: {json.dumps(fix.get('context', {}).get('component_type', 'unknown'), indent=2)}
+""")
+return '\n'.join(formatted)
+
+FIX REQUIRED
+
+Error: {error.get('message', 'Unknown error')}
+Suggestion: {error.get('fix_suggestion', 'Review the code')}
+
+Code with error:
+{current_code}
+
+Please fix the error while maintaining all original constraints.
+"""
+
+============================================================================
+
+CRITICAL ADDITION 3: CONSTRAINT CHECKLIST GENERATOR
+
+============================================================================
+
+class ConstraintChecklistGenerator:
+"""Generate LLM-readable checklists from constraints"""
+
+============================================================================
+
+CRITICAL ADDITION 4: DIFF-BASED VALIDATION FEEDBACK
+
+============================================================================
+
+class DiffBasedValidator:
+"""Show LLM exactly what's wrong with line-level precision"""
+
+============================================================================
+
+CRITICAL ADDITION 5: PROGRESSIVE EXAMPLE SELECTOR
+
+============================================================================
+
+class ProgressiveExampleSelector:
+"""Start with simple examples, increase complexity only if needed"""
+
+============================================================================
+
+CRITICAL ADDITION 6: FAILURE STATE RECOVERY
+
+============================================================================
+
+class FailureStateRecovery:
+"""Save state before each LLM call to enable intelligent rollback"""
+
+MULTIPLE VALIDATION FAILURES DETECTED (Count: {failure_count})
+
+Current approach is not working. Consider rolling back to a known good state:
+
+RECOVERY OPTIONS:
+
+"""
+
+Option {i}: Rollback to Step {opt['step']}
+
+· Steps lost: {opt['steps_lost']}
+· Code similarity to current: {opt['code_similarity']:.1%}
+· Created: {opt['timestamp'].strftime('%H:%M:%S')}
+· Checkpoint ID: {opt['checkpoint_id']}
+  """
+  if opt['recovery_used_before']:
+  prompt += "- ⚠️ This checkpoint has been used for recovery before\n"
+  
+
+CHOOSE AN APPROACH:
+
+1. Continue refining current code - Keep trying with current approach
+2. Rollback to Option 1 - Restart from earlier known-good state
+3. Rollback to Option 2 - Alternative restart point
+4. Request human intervention - Escalate to human review
+
+Which approach do you choose? Explain your reasoning.
+
+Decision:
+"""
+
+============================================================================
+
+CRITICAL ADDITION 7: TYPE-HINT ENFORCEMENT
+
+============================================================================
+
+class TypeHintValidator:
+"""Enforce type hints for LLM-generated code"""
+
+============================================================================
+
+ENHANCED ADAPTIVE EXAMPLE LIBRARY (Original class with additions)
+
+============================================================================
+
+class AdaptiveExampleLibrary:
+"""
+Self-improving example system with semantic search capabilities
+"""
+
+============================================================================
+
+ENHANCED ITERATIVE DIALOGUE MANAGER (With new features)
+
+============================================================================
+
+class IterativeDialogueManager:
+"""
+Enhanced dialogue manager with failure recovery and progressive examples
+"""
+
+============================================================================
+
+CRITICAL ADDITION 8: SEMANTIC CODE SEARCH
+
+============================================================================
+
+class SemanticCodeSearch:
+"""Search existing codebase by semantic meaning, not keywords"""
+
+============================================================================
+
+CRITICAL ADDITION 9: COMPLIANCE PRE-FLIGHT CHECKS
+
+============================================================================
+
+class CompliancePreFlight:
+"""Check constraints BEFORE sending to LLM, not after"""
+
+============================================================================
+
+CRITICAL ADDITION 10: MULTI-MODEL ENSEMBLE
+
+============================================================================
+
+class MultiModelOrchestrator:
+"""Use different LLMs for different subtasks based on their strengths"""
+
+============================================================================
+
+CRITICAL ADDITION 11: STREAMING VALIDATION
+
+============================================================================
+
+class StreamingValidator:
+"""Validate code as it's generated, not after completion"""
+
+============================================================================
+
+CRITICAL ADDITION 12: PROMPT VERSION CONTROL
+
+============================================================================
+
+class PromptVersionControl:
+"""Track which prompts produce best results and evolve them"""
+
+============================================================================
+
+CRITICAL ADDITION 13: CONTEXTUAL HINTS INJECTOR
+
+============================================================================
+
+class ContextualHintsInjector:
+"""Inject targeted hints based on common failure patterns and component type"""
+
+============================================================================
+
+CRITICAL ADDITION 14: CONFIDENCE SCORER
+
+============================================================================
+
+class ConfidenceScorer:
+"""Estimate LLM's confidence and request human review for low-confidence code"""
+
+============================================================================
+
+CRITICAL ADDITION 15: DEPENDENCY INJECTION TESTER
+
+============================================================================
+
+class DependencyInjectionTester:
+"""Generate tests that inject mocks for dependencies"""
+
+============================================================================
+
+ENHANCED CONTRACT-FIRST PIPELINE (With all integrations)
+
+============================================================================
+
+class ContractFirstPipeline:
+"""
+Enhanced pipeline with all critical additions integrated
+"""
+
+============================================================================
+
+MAIN ORCHESTRATOR - CIS CODE SCAFFOLD
+
+============================================================================
+
+class CISCodeScaffold:
+"""
+Main orchestrator that integrates all components
+"""
+
+============================================================================
+
+CLIENT USAGE EXAMPLE
+
+============================================================================
+
+def main():
+"""Example usage of the enhanced CIS Code Scaffold"""
+
+if name == "main":
+main()
+
+```
+
+This comprehensive implementation includes all 15 critical additions in a production-ready architecture. Key features:
+
+## **Core Architecture:**
+1. **Adaptive Token Budgeting** - Intelligently allocates context space
+2. **Error Pattern Learning** - Learns from failures to improve future prompts
+3. **Constraint Checklists** - Converts abstract rules into explicit checklists
+4. **Diff-Based Validation** - Shows exact line-level errors with fixes
+5. **Progressive Examples** - Starts simple, escalates complexity only if needed
+6. **Failure Recovery** - Saves checkpoints for intelligent rollback
+7. **Type Hint Enforcement** - Ensures LLM-generated code has proper typing
+8. **Semantic Code Search** - Finds code by meaning, not just keywords
+9. **Compliance Pre-Flight** - Catches impossible tasks before LLM calls
+10. **Multi-Model Ensemble** - Uses right model for each subtask
+11. **Streaming Validation** - Validates code as it's generated
+12. **Prompt Version Control** - Continuously improves prompts
+13. **Contextual Hints** - Preempts common mistakes with targeted hints
+14. **Confidence Scoring** - Knows when to trust LLM vs escalate to human
+15. **Dependency Injection Testing** - Tests components before dependencies exist
+
+## **Integration Points:**
+- All components work together through the main `CISCodeScaffold` orchestrator
+- `ContractFirstPipeline` integrates validation, budgeting, and examples
+- `IterativeDialogueManager` handles failure recovery and progressive complexity
+- `MultiModelOrchestrator` intelligently routes tasks to appropriate models
+
+## **Production Features:**
+- Comprehensive error handling
+- Performance tracking and metrics
+- Budget management
+- History and lineage tracking
+- Exportable project structures
+- Interactive dialogue sessions
+
+The system transforms LLM-assisted development from "code generation" to "intelligent pair programming" that learns, adapts, and prevents mistakes proactively.
