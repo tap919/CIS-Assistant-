@@ -7,6 +7,7 @@ Circulatory Informatics System (CIS) methodology.
 """
 
 import asyncio
+import ast
 import json
 import uuid
 import re
@@ -873,38 +874,84 @@ Use `get_contract` with a contract ID to see full details."""
         return "\n".join(formatted)
 
     def _validate_code(self, code: str, contract: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate code against contract (simplified validation)"""
+        """Validate code against contract using AST parsing for accuracy"""
         errors = []
         
-        # Check if code contains the expected component name
-        if contract["name"] not in code:
+        # Try to parse the code with AST
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as e:
+            errors.append({
+                "type": "syntax_error",
+                "severity": "critical",
+                "message": f"Syntax error in code: {str(e)}",
+                "line": e.lineno if hasattr(e, 'lineno') else 0,
+                "fix_suggestion": "Fix syntax errors in the code"
+            })
+            return {
+                "passed": False,
+                "errors": errors
+            }
+        
+        # Find the component in the AST
+        component_found = False
+        component_has_docstring = False
+        
+        for node in ast.walk(tree):
+            # Check for class or function definition matching the contract
+            if contract["type"] == "class" and isinstance(node, ast.ClassDef):
+                if node.name == contract["name"]:
+                    component_found = True
+                    # Check for class docstring
+                    component_has_docstring = ast.get_docstring(node) is not None
+                    
+                    # For classes, check methods have type hints
+                    for item in node.body:
+                        if isinstance(item, ast.FunctionDef):
+                            # Check if method has return type annotation
+                            if item.returns is None and item.name != "__init__":
+                                errors.append({
+                                    "type": "type_hint_missing",
+                                    "severity": "high",
+                                    "message": f"Method '{item.name}' missing return type annotation",
+                                    "line": item.lineno,
+                                    "fix_suggestion": f"Add return type annotation to method '{item.name}'"
+                                })
+                    
+            elif contract["type"] == "function" and isinstance(node, ast.FunctionDef):
+                if node.name == contract["name"]:
+                    component_found = True
+                    # Check for function docstring
+                    component_has_docstring = ast.get_docstring(node) is not None
+                    
+                    # Check for return type annotation
+                    if node.returns is None:
+                        errors.append({
+                            "type": "type_hint_missing",
+                            "severity": "high",
+                            "message": "Return type annotation missing",
+                            "line": node.lineno,
+                            "fix_suggestion": "Add return type annotation (-> ReturnType)"
+                        })
+        
+        # Check if component was found
+        if not component_found:
             errors.append({
                 "type": "interface_violation",
                 "severity": "critical",
                 "message": f"Component '{contract['name']}' not found in implementation",
                 "line": 0,
-                "fix_suggestion": f"Ensure your code defines '{contract['name']}'"
+                "fix_suggestion": f"Ensure your code defines '{contract['name']}' as a {contract['type']}"
             })
         
-        # Check for type hints (simple check)
-        if contract["type"] == "function" and "def " in code:
-            if "->" not in code:
-                errors.append({
-                    "type": "type_hint_missing",
-                    "severity": "high",
-                    "message": "Return type annotation missing",
-                    "line": 0,
-                    "fix_suggestion": "Add return type annotation (-> ReturnType)"
-                })
-        
-        # Check for docstrings
-        if '"""' not in code and "'''" not in code:
+        # Check for docstring
+        if component_found and not component_has_docstring:
             errors.append({
                 "type": "documentation_missing",
                 "severity": "medium",
-                "message": "Docstring missing",
+                "message": f"{contract['type'].capitalize()} '{contract['name']}' is missing a docstring",
                 "line": 0,
-                "fix_suggestion": "Add docstring to document the component"
+                "fix_suggestion": f"Add a docstring to document the {contract['type']}"
             })
         
         return {
