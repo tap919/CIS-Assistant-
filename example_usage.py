@@ -7,7 +7,6 @@ programmatically (for testing purposes).
 """
 
 import asyncio
-import json
 from cis_assistant_mcp.server import CISAssistantServer
 
 
