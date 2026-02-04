@@ -30,8 +30,6 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "mcp>=0.9.0",
-        "pandas>=2.0.0",
-        "numpy>=1.24.0",
     ],
     extras_require={
         "dev": [
