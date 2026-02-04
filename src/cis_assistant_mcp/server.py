@@ -556,7 +556,8 @@ No previous fixes have been recorded for this error type yet.
         # Increment usage count for patterns being shown
         suggestions = []
         for i, pattern in enumerate(sorted_patterns[:3], 1):
-            # Increment usage count to track which patterns are most helpful
+            # Increment usage count to track popularity (how often patterns are shown to users)
+            # Note: In a production system, consider only incrementing when user confirms the fix was helpful
             pattern["usage_count"] += 1
             
             before_code = self._smart_truncate(pattern["code_before"], self.MAX_BEFORE_AFTER_LENGTH)
@@ -909,7 +910,9 @@ Use `get_contract` with a contract ID to see full details."""
                     for item in node.body:
                         if isinstance(item, ast.FunctionDef):
                             # Check if method has return type annotation
-                            if item.returns is None and item.name != "__init__":
+                            # Skip dunder methods (special methods) as they commonly omit return annotations
+                            is_dunder = item.name.startswith("__") and item.name.endswith("__")
+                            if item.returns is None and not is_dunder:
                                 errors.append({
                                     "type": "type_hint_missing",
                                     "severity": "high",
