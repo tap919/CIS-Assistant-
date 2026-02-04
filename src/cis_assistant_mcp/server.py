@@ -508,7 +508,6 @@ You can retrieve this pattern using `get_fix_suggestions` tool when encountering
     async def _get_fix_suggestions(self, arguments: Dict[str, Any]) -> list[TextContent]:
         """Get fix suggestions based on error patterns"""
         error_type = arguments["error_type"]
-        current_code = arguments["current_code"]
         
         patterns = self.error_patterns.get(error_type, [])
         
