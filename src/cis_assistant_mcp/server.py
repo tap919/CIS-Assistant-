@@ -8,7 +8,9 @@ Circulatory Informatics System (CIS) methodology.
 
 import asyncio
 import json
-from typing import Any, Dict, List
+import uuid
+import re
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from mcp.server import Server
@@ -16,9 +18,6 @@ from mcp.server.stdio import stdio_server
 from mcp.types import (
     Tool,
     TextContent,
-    ImageContent,
-    EmbeddedResource,
-    CallToolResult,
     GetPromptResult,
     Prompt,
     PromptArgument,
@@ -36,6 +35,10 @@ class CISAssistantServer:
     - Constraint checking
     - Adaptive example management
     - Error pattern analysis
+    
+    Note: This implementation uses in-memory storage. All contracts, patterns,
+    and examples will be lost when the server restarts. For production use,
+    consider implementing persistent storage using files or a database.
     """
     
     # Constants for code truncation
@@ -45,7 +48,6 @@ class CISAssistantServer:
     def __init__(self):
         self.server = Server("cis-assistant")
         self.contracts: Dict[str, Any] = {}
-        self.implementations: Dict[str, Any] = {}
         self.error_patterns: Dict[str, List[Dict[str, Any]]] = {}
         self.examples: List[Dict[str, Any]] = []
         
@@ -379,7 +381,27 @@ This workflow ensures high-quality, maintainable code by establishing clear cont
         component_type = arguments["component_type"]
         requirements = arguments["requirements"]
         
-        contract_id = f"contract_{len(self.contracts) + 1}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # Validate inputs
+        if not self._validate_component_name(component_name):
+            return [TextContent(
+                type="text",
+                text=f"Error: Invalid component name '{component_name}'. Must be a valid Python identifier."
+            )]
+        
+        allowed_types = ["class", "function", "module", "service", "api"]
+        if component_type not in allowed_types:
+            return [TextContent(
+                type="text",
+                text=f"Error: Invalid component type '{component_type}'. Must be one of: {', '.join(allowed_types)}"
+            )]
+        
+        if not isinstance(requirements, dict):
+            return [TextContent(
+                type="text",
+                text="Error: Requirements must be a dictionary/object."
+            )]
+        
+        contract_id = f"contract_{uuid.uuid4().hex[:8]}"
         
         contract = {
             "id": contract_id,
@@ -480,7 +502,7 @@ The implementation satisfies all contract requirements."""
             self.error_patterns[error_type] = []
         
         pattern = {
-            "id": f"pattern_{len(self.error_patterns[error_type]) + 1}",
+            "id": f"pattern_{uuid.uuid4().hex[:8]}",
             "error_type": error_type,
             "code_before": code_before,
             "code_after": code_after,
@@ -530,8 +552,12 @@ No previous fixes have been recorded for this error type yet.
         # Sort by usage count (most successful patterns first)
         sorted_patterns = sorted(patterns, key=lambda p: p["usage_count"], reverse=True)
         
+        # Increment usage count for patterns being shown
         suggestions = []
         for i, pattern in enumerate(sorted_patterns[:3], 1):
+            # Increment usage count to track which patterns are most helpful
+            pattern["usage_count"] += 1
+            
             before_code = self._smart_truncate(pattern["code_before"], self.MAX_BEFORE_AFTER_LENGTH)
             after_code = self._smart_truncate(pattern["code_after"], self.MAX_BEFORE_AFTER_LENGTH)
             
@@ -577,7 +603,7 @@ No previous fixes have been recorded for this error type yet.
         tags = arguments.get("tags", [])
         
         example = {
-            "id": f"example_{len(self.examples) + 1}",
+            "id": f"example_{uuid.uuid4().hex[:8]}",
             "type": example_type,
             "code": code,
             "description": description,
@@ -726,6 +752,13 @@ Use `get_contract` with a contract ID to see full details."""
         return [TextContent(type="text", text=result)]
 
     # Helper methods
+    
+    def _validate_component_name(self, name: str) -> bool:
+        """Validate that component name is a valid Python identifier"""
+        if not name or not isinstance(name, str):
+            return False
+        # Check if it's a valid Python identifier
+        return name.isidentifier()
     
     def _generate_interface(self, name: str, component_type: str, requirements: Dict[str, Any]) -> str:
         """Generate interface code based on component type"""

@@ -46,7 +46,7 @@ CIS Assistant is an MCP server that enables AI applications (like Claude) to:
 pip install -e .
 
 # Or install dependencies directly
-pip install mcp pandas numpy
+pip install mcp
 ```
 
 ## Usage

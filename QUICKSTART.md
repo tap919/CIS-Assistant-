@@ -15,7 +15,7 @@ CIS Assistant is an AI-powered development tool that helps you:
 ### Step 1: Install Dependencies
 
 ```bash
-pip install mcp pandas numpy
+pip install mcp
 ```
 
 ### Step 2: Clone or Download
