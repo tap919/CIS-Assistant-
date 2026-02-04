@@ -37,6 +37,10 @@ class CISAssistantServer:
     - Adaptive example management
     - Error pattern analysis
     """
+    
+    # Constants for code truncation
+    MAX_CODE_SNIPPET_LENGTH = 500
+    MAX_BEFORE_AFTER_LENGTH = 200
 
     def __init__(self):
         self.server = Server("cis-assistant")
@@ -529,6 +533,9 @@ No previous fixes have been recorded for this error type yet.
         
         suggestions = []
         for i, pattern in enumerate(sorted_patterns[:3], 1):
+            before_code = self._smart_truncate(pattern["code_before"], self.MAX_BEFORE_AFTER_LENGTH)
+            after_code = self._smart_truncate(pattern["code_after"], self.MAX_BEFORE_AFTER_LENGTH)
+            
             suggestions.append(f"""
 ## Fix Pattern #{i} (Used {pattern["usage_count"]} times)
 
@@ -536,12 +543,12 @@ No previous fixes have been recorded for this error type yet.
 
 ### Before:
 ```python
-{pattern["code_before"][:200]}...
+{before_code}
 ```
 
 ### After:
 ```python
-{pattern["code_after"][:200]}...
+{after_code}
 ```
 
 **Context:** {json.dumps(pattern.get("context", {}), indent=2)}
@@ -633,6 +640,8 @@ No examples match your search criteria. Try:
         
         results = []
         for example in matching_examples[:5]:  # Limit to top 5
+            code_snippet = self._smart_truncate(example["code"], self.MAX_CODE_SNIPPET_LENGTH)
+            
             results.append(f"""
 ## {example["id"]} - {example["type"]}
 
@@ -641,7 +650,7 @@ No examples match your search criteria. Try:
 **Added:** {example["added_at"]}
 
 ```python
-{example["code"][:300]}...
+{code_snippet}
 ```
 """)
         
@@ -891,6 +900,27 @@ Use `get_contract` with a contract ID to see full details."""
                 formatted.append(f"**Fix:** {error['fix_suggestion']}")
         
         return "\n".join(formatted)
+    
+    def _smart_truncate(self, code: str, max_length: int) -> str:
+        """Truncate code intelligently at line boundaries"""
+        if len(code) <= max_length:
+            return code
+        
+        lines = code.split('\n')
+        truncated_lines = []
+        current_length = 0
+        
+        for line in lines:
+            if current_length + len(line) + 1 > max_length:
+                break
+            truncated_lines.append(line)
+            current_length += len(line) + 1
+        
+        if truncated_lines:
+            return '\n'.join(truncated_lines) + '\n# ... (truncated)'
+        else:
+            # If first line is too long, truncate at max_length
+            return code[:max_length] + '\n# ... (truncated)'
 
     async def run(self):
         """Run the MCP server"""

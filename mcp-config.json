@@ -6,8 +6,10 @@
         "-m",
         "cis_assistant_mcp.server"
       ],
-      "cwd": "/home/runner/work/CIS-Assistant-/CIS-Assistant-",
-      "env": {}
+      "cwd": "/path/to/CIS-Assistant-",
+      "env": {
+        "PYTHONPATH": "/path/to/CIS-Assistant-/src"
+      }
     }
   }
 }
