@@ -1368,7 +1368,7 @@ Use `get_bible_section(section="<name>")` to access other sections."""
         
         # Check for Graceful Degradation (fallbacks, timeouts)
         has_resilience = any(pattern in code.lower() for pattern in 
-                            ['timeout', 'fallback', 'default', 'circuit', 'breaker', 'optional'])
+                            ['timeout', 'fallback', 'default_value', 'fallback_to', 'default_behavior', 'circuit', 'breaker', 'optional'])
         compliance_checks.append({
             "principle": "Graceful Degradation",
             "passed": has_resilience,
