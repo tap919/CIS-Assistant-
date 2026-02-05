@@ -1383,7 +1383,9 @@ Use `get_bible_section(section="<name>")` to access other sections."""
         
         # Check for type hints (related to Emergent Intelligence - clear interfaces)
         # Use regex to detect function/method signatures with type hints
-        type_hint_pattern = re.compile(r'def\s+\w+\s*\([^)]*:.*\)|def\s+\w+\s*\([^)]*\)\s*->')
+        type_hint_pattern = re.compile(
+            r'def\s+\w+\s*\([^)]*:\s*\w+[^)]*\)|def\s+\w+\s*\([^)]*\)\s*->'
+        )
         has_type_hints = bool(type_hint_pattern.search(code)) or 'typing' in code.lower()
         compliance_checks.append({
             "principle": "Emergent Intelligence (Clear Interfaces)",
