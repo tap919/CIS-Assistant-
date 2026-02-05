@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "cis-assistant": {
+      "command": "python",
+      "args": [
+        "-m",
+        "cis_assistant_mcp.server"
+      ],
+      "cwd": "/path/to/CIS-Assistant-",
+      "env": {
+        "PYTHONPATH": "/path/to/CIS-Assistant-/src"
+      }
+    }
+  }
+}
