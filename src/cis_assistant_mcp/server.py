@@ -28,10 +28,7 @@ from mcp.types import (
     Prompt,
     PromptArgument,
     PromptMessage,
-    Resource,
 )
-
-
 class CISAssistantServer:
     """
     MCP Server for CIS Assistant
