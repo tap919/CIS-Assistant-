@@ -4,6 +4,9 @@ CIS Assistant MCP Server
 
 This server provides tools for LLM-augmented code development using the
 Circulatory Informatics System (CIS) methodology.
+
+The server integrates the Circulatory Informatics Bible to maintain adherence
+to CIS structure and provides aids for common LLM coding issues.
 """
 
 import asyncio
@@ -11,8 +14,10 @@ import ast
 import json
 import uuid
 import re
+import os
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -24,8 +29,6 @@ from mcp.types import (
     PromptArgument,
     PromptMessage,
 )
-
-
 class CISAssistantServer:
     """
     MCP Server for CIS Assistant
@@ -36,6 +39,8 @@ class CISAssistantServer:
     - Constraint checking
     - Adaptive example management
     - Error pattern analysis
+    - Circulatory Informatics methodology guidance
+    - Common LLM coding issue aids
     
     Note: This implementation uses in-memory storage. All contracts, patterns,
     and examples will be lost when the server restarts. For production use,
@@ -45,16 +50,270 @@ class CISAssistantServer:
     # Constants for code truncation
     MAX_CODE_SNIPPET_LENGTH = 500
     MAX_BEFORE_AFTER_LENGTH = 200
+    MAX_BIBLE_SECTION_LENGTH = 5000
+    
+    # Common LLM coding issues and their solutions
+    LLM_CODING_AIDS = {
+        "context_window_overflow": {
+            "description": "LLM loses context with large codebases",
+            "solutions": [
+                "Break code into smaller, focused modules",
+                "Use progressive context loading (start with interfaces, add details)",
+                "Summarize distant context before providing detail",
+                "Use adaptive token budgeting - prioritize most relevant context"
+            ]
+        },
+        "hallucinated_imports": {
+            "description": "LLM invents non-existent libraries or APIs",
+            "solutions": [
+                "Always verify imports exist before using them",
+                "Provide explicit list of available dependencies",
+                "Include actual import statements from working code as examples",
+                "Cross-reference with requirements.txt or package.json"
+            ]
+        },
+        "inconsistent_naming": {
+            "description": "LLM uses inconsistent naming conventions across code",
+            "solutions": [
+                "Provide explicit naming convention rules upfront",
+                "Include examples of correct naming in context",
+                "Use constraint checklists that specify naming patterns",
+                "Review generated code for naming consistency before execution"
+            ]
+        },
+        "missing_error_handling": {
+            "description": "LLM omits try/except blocks and edge case handling",
+            "solutions": [
+                "Explicitly require error handling in contracts",
+                "Provide examples with comprehensive error handling",
+                "Add validation rules that check for exception handling",
+                "Include 'graceful degradation' as a behavioral constraint"
+            ]
+        },
+        "type_hint_inconsistency": {
+            "description": "LLM provides incomplete or incorrect type hints",
+            "solutions": [
+                "Enforce type hints through validation rules",
+                "Provide type hint examples for complex types",
+                "Use TypedDict and Protocol examples for clarity",
+                "Validate with mypy or similar tools"
+            ]
+        },
+        "incomplete_implementation": {
+            "description": "LLM provides stub implementations or 'pass' statements",
+            "solutions": [
+                "Require complete implementations in constraints",
+                "Validate that no 'pass' or 'TODO' remains",
+                "Use progressive example complexity (simple → complete)",
+                "Check for stub patterns in validation"
+            ]
+        },
+        "security_vulnerabilities": {
+            "description": "LLM generates code with common security issues",
+            "solutions": [
+                "Include security constraints in contracts",
+                "Validate input sanitization and parameterized queries",
+                "Check for hardcoded secrets patterns",
+                "Require secure defaults in configuration"
+            ]
+        },
+        "logic_drift": {
+            "description": "LLM solution drifts from original intent over iterations",
+            "solutions": [
+                "Maintain explicit contract reference throughout",
+                "Use checkpoints to preserve known-good states",
+                "Re-state original requirements when iterating",
+                "Compare current solution against initial constraints"
+            ]
+        }
+    }
+    
+    # CIS Seven Principles for methodology adherence
+    CIS_SEVEN_PRINCIPLES = {
+        "distributed_autonomy": {
+            "principle": "No single point of control. Each 'organ' operates autonomously within a decentralized governance framework.",
+            "implication": "Services should make decisions without asking permission from a central authority. Use event-driven pub/sub patterns.",
+            "code_pattern": "Decouple components, use message queues, avoid synchronous dependencies"
+        },
+        "continuous_sensing": {
+            "principle": "The organism must continuously monitor its own state through events.",
+            "implication": "Observability isn't optional—it's part of the organism's nervous system. Every event is a data point.",
+            "code_pattern": "Add logging, metrics, and health checks to all components"
+        },
+        "feedback_driven_adaptation": {
+            "principle": "Adaptation requires feedback loops that measure deviation and trigger corrective action.",
+            "implication": "Self-healing and auto-remediation are baseline expectations, not optional features.",
+            "code_pattern": "Implement retry logic, circuit breakers, and automatic recovery mechanisms"
+        },
+        "emergent_intelligence": {
+            "principle": "Intelligence emerges from interaction of simple agents following local rules.",
+            "implication": "Don't create one super-intelligent controller. Create multiple specialized agents that collaborate.",
+            "code_pattern": "Design small, focused components that communicate through well-defined interfaces"
+        },
+        "memory_and_learning": {
+            "principle": "The organism learns from past events and adjusts future behavior.",
+            "implication": "Pattern analysis and learning from history aren't optional—they're how the system improves.",
+            "code_pattern": "Record error patterns, track successful fixes, build adaptive example libraries"
+        },
+        "graceful_degradation": {
+            "principle": "No single component is essential. The system continues functioning when components fail.",
+            "implication": "Design for fault tolerance at every level. Failures should not cascade.",
+            "code_pattern": "Use fallbacks, timeouts, and isolation patterns to prevent cascading failures"
+        },
+        "efficient_resource_flow": {
+            "principle": "Resources flow to where they're needed. Demand drives allocation.",
+            "implication": "Auto-scaling, load balancing, and resource optimization are structural requirements.",
+            "code_pattern": "Implement resource pooling, lazy loading, and demand-based scaling"
+        }
+    }
 
     def __init__(self):
         self.server = Server("cis-assistant")
         self.contracts: Dict[str, Any] = {}
         self.error_patterns: Dict[str, List[Dict[str, Any]]] = {}
         self.examples: List[Dict[str, Any]] = []
+        self.bible_content: str = self._load_bible_content()
         
         # Register handlers
         self._setup_handlers()
+    
+    def _is_safe_bible_path(self, path: Path, allowed_roots: List[Path]) -> bool:
+        """
+        Validate that the requested Bible path is within one of the allowed roots.
+        This prevents the CIS_BIBLE_PATH environment variable from pointing to
+        arbitrary locations on the filesystem.
+        """
+        try:
+            resolved_path = path.expanduser().resolve()
+        except Exception:
+            # If resolution fails (e.g., due to symlink issues), treat as unsafe.
+            return False
 
+        for root in allowed_roots:
+            try:
+                # Will raise ValueError if resolved_path is not within root.
+                resolved_path.relative_to(root)
+                return True
+            except ValueError:
+                continue
+        return False
+
+    def _load_bible_content(self) -> str:
+        """Load the Circulatory Informatics Bible content"""
+        # Try to find the Bible file relative to the package or from environment
+        base_file_path = Path(__file__).resolve()
+        allowed_roots: List[Path] = [
+            base_file_path.parents[3],
+            base_file_path.parents[2],
+            Path.cwd().resolve(),
+        ]
+
+        bible_env_path = os.environ.get("CIS_BIBLE_PATH")
+        
+        possible_paths: List[Path] = []
+        if bible_env_path:
+            env_candidate = Path(bible_env_path)
+            if self._is_safe_bible_path(env_candidate, allowed_roots):
+                possible_paths.append(env_candidate)
+        
+        possible_paths.extend([
+            base_file_path.parents[3] / "Bible",
+            base_file_path.parents[2] / "Bible",
+            Path.cwd().resolve() / "Bible",
+        ])
+        
+        for bible_path in possible_paths:
+            if bible_path.is_file():
+                try:
+                    with open(bible_path, 'r', encoding='utf-8') as f:
+                        return f.read()
+                except (OSError, UnicodeDecodeError):
+                    # Continue to try other paths if this one fails
+                    continue
+        
+        return ""
+    
+    def _extract_bible_section(self, section_name: str) -> str:
+        """Extract a specific section from the Bible content"""
+        if not self.bible_content:
+            return "Bible content not available."
+        
+        # Define section markers and their content ranges
+        sections = {
+            "philosophy": ("PART I: PHILOSOPHICAL FOUNDATIONS", "PART II: SCIENTIFIC"),
+            "seven_principles": ("2.1 The Seven Principles", "2.2 The Circulatory Metaphor"),
+            "nine_systems": ("5. The Nine Systems", "PART III:"),
+            "vibe_coding": ("3. How Living Code Achieves", "PART II:"),
+            "scientific_foundations": ("PART II: SCIENTIFIC FOUNDATIONS", "PART III:"),
+        }
+        
+        if section_name.lower() not in sections:
+            return f"Section '{section_name}' not found. Available: {', '.join(sections.keys())}"
+        
+        start_marker, end_marker = sections[section_name.lower()]
+        
+        start_idx = self.bible_content.find(start_marker)
+        end_idx = self.bible_content.find(end_marker, start_idx + len(start_marker))
+        
+        if start_idx == -1:
+            return f"Section '{section_name}' not found in Bible content."
+        
+        if end_idx == -1:
+            return self._truncate_bible_section(self.bible_content[start_idx:])
+        
+        return self._truncate_bible_section(self.bible_content[start_idx:end_idx])
+
+    def _truncate_bible_section(self, text: str) -> str:
+        """
+        Truncate Bible section text to MAX_BIBLE_SECTION_LENGTH, preferring
+        sentence/paragraph boundaries and indicating when content is truncated.
+        """
+        # If no limit is defined for some reason, or text is already short enough,
+        # return the text unchanged.
+        max_len = getattr(self, "MAX_BIBLE_SECTION_LENGTH", None)
+        if max_len is None or len(text) <= max_len:
+            return text
+        
+        # Reserve space for ellipsis when truncating.
+        ellipsis = "..."
+        if max_len <= len(ellipsis):
+            # Degenerate case: not enough room for ellipsis and content.
+            return text[:max_len]
+        
+        # Work with a base slice within the maximum length.
+        base = text[:max_len]
+        
+        # Try to find a natural boundary (paragraph or sentence end) within base.
+        boundary_indices: list[int] = []
+        
+        # Prefer paragraph boundaries first.
+        for marker in ["\n\n", "\n"]:
+            idx = base.rfind(marker)
+            if idx != -1:
+                # Cut at the end of the marker.
+                boundary_indices.append(idx + len(marker))
+                break
+        
+        # If no paragraph boundary found, look for sentence endings.
+        if not boundary_indices:
+            for marker in [". ", "? ", "! "]:
+                idx = base.rfind(marker)
+                if idx != -1:
+                    boundary_indices.append(idx + len(marker))
+                    break
+        
+        if boundary_indices:
+            cut_pos = boundary_indices[0]
+            candidate = base[:cut_pos].rstrip()
+        else:
+            # Fall back to a hard cut just before the ellipsis space.
+            candidate = base[: max_len - len(ellipsis)].rstrip()
+        
+        # Ensure final result (candidate + ellipsis) does not exceed max_len.
+        if len(candidate) + len(ellipsis) > max_len:
+            candidate = candidate[: max_len - len(ellipsis)]
+        
+        return candidate + ellipsis
     def _setup_handlers(self):
         """Setup MCP server handlers"""
         
@@ -219,6 +478,69 @@ class CISAssistantServer:
                         "required": ["contract_id"]
                     }
                 ),
+                Tool(
+                    name="get_cis_principles",
+                    description="Get CIS (Circulatory Informatics System) principles and methodology guidelines for maintaining adherence to circulatory informatics structure",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "principle": {
+                                "type": "string",
+                                "description": "Specific principle to retrieve (optional). Options: distributed_autonomy, continuous_sensing, feedback_driven_adaptation, emergent_intelligence, memory_and_learning, graceful_degradation, efficient_resource_flow",
+                                "enum": ["distributed_autonomy", "continuous_sensing", "feedback_driven_adaptation", "emergent_intelligence", "memory_and_learning", "graceful_degradation", "efficient_resource_flow"]
+                            }
+                        },
+                        "required": []
+                    }
+                ),
+                Tool(
+                    name="get_llm_coding_aid",
+                    description="Get guidance for common LLM coding issues and their solutions",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "issue_type": {
+                                "type": "string",
+                                "description": "Type of LLM coding issue. Options: context_window_overflow, hallucinated_imports, inconsistent_naming, missing_error_handling, type_hint_inconsistency, incomplete_implementation, security_vulnerabilities, logic_drift",
+                                "enum": ["context_window_overflow", "hallucinated_imports", "inconsistent_naming", "missing_error_handling", "type_hint_inconsistency", "incomplete_implementation", "security_vulnerabilities", "logic_drift"]
+                            }
+                        },
+                        "required": []
+                    }
+                ),
+                Tool(
+                    name="get_bible_section",
+                    description="Get a section from the Circulatory Informatics Bible for methodology reference and adherence guidance",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "section": {
+                                "type": "string",
+                                "description": "Section to retrieve. Options: philosophy, seven_principles, nine_systems, vibe_coding, scientific_foundations",
+                                "enum": ["philosophy", "seven_principles", "nine_systems", "vibe_coding", "scientific_foundations"]
+                            }
+                        },
+                        "required": ["section"]
+                    }
+                ),
+                Tool(
+                    name="check_cis_compliance",
+                    description="Check if code or design adheres to CIS principles and get recommendations for improvement",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "Code to check for CIS compliance"
+                            },
+                            "component_description": {
+                                "type": "string",
+                                "description": "Description of what the component does"
+                            }
+                        },
+                        "required": ["code", "component_description"]
+                    }
+                ),
             ]
 
         @self.server.call_tool()
@@ -241,6 +563,14 @@ class CISAssistantServer:
                 return await self._list_contracts(arguments)
             elif name == "get_contract":
                 return await self._get_contract(arguments)
+            elif name == "get_cis_principles":
+                return await self._get_cis_principles(arguments)
+            elif name == "get_llm_coding_aid":
+                return await self._get_llm_coding_aid(arguments)
+            elif name == "get_bible_section":
+                return await self._get_bible_section(arguments)
+            elif name == "check_cis_compliance":
+                return await self._check_cis_compliance(arguments)
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -269,6 +599,22 @@ class CISAssistantServer:
                             required=True
                         )
                     ]
+                ),
+                Prompt(
+                    name="cis_methodology_guide",
+                    description="Guide for implementing code following Circulatory Informatics System principles",
+                    arguments=[
+                        PromptArgument(
+                            name="focus_area",
+                            description="Area to focus on: architecture, error_handling, observability, resilience",
+                            required=False
+                        )
+                    ]
+                ),
+                Prompt(
+                    name="llm_coding_best_practices",
+                    description="Best practices for LLM-assisted code generation to avoid common issues",
+                    arguments=[]
                 ),
             ]
 
@@ -369,6 +715,147 @@ This workflow ensures high-quality, maintainable code by establishing clear cont
 - Check for type mismatches and missing imports
 - Verify all required methods/properties are present
 - Ensure naming conventions are followed"""
+                            )
+                        )
+                    ]
+                )
+            elif name == "cis_methodology_guide":
+                focus_area = arguments.get("focus_area", "general") if arguments else "general"
+                return GetPromptResult(
+                    description="Circulatory Informatics System methodology guide",
+                    messages=[
+                        PromptMessage(
+                            role="user",
+                            content=TextContent(
+                                type="text",
+                                text=f"""# Circulatory Informatics System (CIS) Methodology Guide
+
+## Focus Area: {focus_area.replace('_', ' ').title()}
+
+## The Seven Principles of Living Code
+
+### 1. Distributed Autonomy
+**Principle:** No single point of control. Each 'organ' operates autonomously within a decentralized governance framework.
+**Code Pattern:** Decouple components, use message queues, avoid synchronous dependencies.
+
+### 2. Continuous Sensing
+**Principle:** The organism must continuously monitor its own state through events.
+**Code Pattern:** Add logging, metrics, and health checks to all components.
+
+### 3. Feedback-Driven Adaptation
+**Principle:** Adaptation requires feedback loops that measure deviation and trigger corrective action.
+**Code Pattern:** Implement retry logic, circuit breakers, and automatic recovery mechanisms.
+
+### 4. Emergent Intelligence
+**Principle:** Intelligence emerges from interaction of simple agents following local rules.
+**Code Pattern:** Design small, focused components that communicate through well-defined interfaces.
+
+### 5. Memory and Learning
+**Principle:** The organism learns from past events and adjusts future behavior.
+**Code Pattern:** Record error patterns, track successful fixes, build adaptive example libraries.
+
+### 6. Graceful Degradation
+**Principle:** No single component is essential. The system continues functioning when components fail.
+**Code Pattern:** Use fallbacks, timeouts, and isolation patterns to prevent cascading failures.
+
+### 7. Efficient Resource Flow
+**Principle:** Resources flow to where they're needed. Demand drives allocation.
+**Code Pattern:** Implement resource pooling, lazy loading, and demand-based scaling.
+
+## Implementation Checklist
+
+When developing a component, ensure it follows these CIS principles:
+
+- [ ] Component can operate independently (Distributed Autonomy)
+- [ ] Component emits events/logs for monitoring (Continuous Sensing)
+- [ ] Component handles failures and retries (Feedback-Driven Adaptation)
+- [ ] Component has single responsibility (Emergent Intelligence)
+- [ ] Component learns from errors (Memory and Learning)
+- [ ] Component fails gracefully (Graceful Degradation)
+- [ ] Component scales with demand (Efficient Resource Flow)
+
+## Tools Available
+
+Use these CIS Assistant tools to maintain methodology adherence:
+- `get_cis_principles` - Get detailed principle guidance
+- `check_cis_compliance` - Validate code against CIS principles
+- `get_bible_section` - Access Circulatory Informatics Bible sections
+- `get_llm_coding_aid` - Get help with common LLM coding issues"""
+                            )
+                        )
+                    ]
+                )
+            elif name == "llm_coding_best_practices":
+                return GetPromptResult(
+                    description="Best practices for LLM-assisted code generation",
+                    messages=[
+                        PromptMessage(
+                            role="user",
+                            content=TextContent(
+                                type="text",
+                                text="""# LLM-Assisted Code Generation Best Practices
+
+## Common Issues and Solutions
+
+### 1. Context Window Overflow
+**Problem:** LLM loses context with large codebases
+**Solutions:**
+- Break code into smaller, focused modules
+- Use progressive context loading
+- Summarize distant context before providing detail
+
+### 2. Hallucinated Imports
+**Problem:** LLM invents non-existent libraries or APIs
+**Solutions:**
+- Always verify imports exist before using them
+- Provide explicit list of available dependencies
+- Include actual import statements from working code
+
+### 3. Inconsistent Naming
+**Problem:** LLM uses inconsistent naming conventions
+**Solutions:**
+- Provide explicit naming convention rules upfront
+- Include examples of correct naming in context
+- Use constraint checklists that specify naming patterns
+
+### 4. Missing Error Handling
+**Problem:** LLM omits try/except blocks and edge case handling
+**Solutions:**
+- Explicitly require error handling in contracts
+- Provide examples with comprehensive error handling
+- Add validation rules that check for exception handling
+
+### 5. Type Hint Inconsistency
+**Problem:** LLM provides incomplete or incorrect type hints
+**Solutions:**
+- Enforce type hints through validation rules
+- Provide type hint examples for complex types
+- Validate with mypy or similar tools
+
+### 6. Incomplete Implementation
+**Problem:** LLM provides stub implementations or 'pass' statements
+**Solutions:**
+- Require complete implementations in constraints
+- Validate that no 'pass' or 'TODO' remains
+- Use progressive example complexity
+
+### 7. Security Vulnerabilities
+**Problem:** LLM generates code with common security issues
+**Solutions:**
+- Include security constraints in contracts
+- Validate input sanitization
+- Check for hardcoded secrets patterns
+
+### 8. Logic Drift
+**Problem:** LLM solution drifts from original intent over iterations
+**Solutions:**
+- Maintain explicit contract reference throughout
+- Use checkpoints to preserve known-good states
+- Re-state original requirements when iterating
+
+## Tools Available
+
+Use `get_llm_coding_aid` with a specific issue type for detailed guidance on any of these issues."""
                             )
                         )
                     ]
@@ -750,6 +1237,325 @@ Use `get_contract` with a contract ID to see full details."""
 ```json
 {json.dumps(contract["requirements"], indent=2)}
 ```"""
+        
+        return [TextContent(type="text", text=result)]
+
+    async def _get_cis_principles(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Get CIS principles and methodology guidelines"""
+        principle = arguments.get("principle")
+        
+        if principle:
+            if principle not in self.CIS_SEVEN_PRINCIPLES:
+                return [TextContent(
+                    type="text",
+                    text=f"Error: Unknown principle '{principle}'. Available: {', '.join(self.CIS_SEVEN_PRINCIPLES.keys())}"
+                )]
+            
+            p = self.CIS_SEVEN_PRINCIPLES[principle]
+            result = f"""# CIS Principle: {principle.replace('_', ' ').title()}
+
+## Principle
+{p['principle']}
+
+## Implication for Code
+{p['implication']}
+
+## Code Pattern
+{p['code_pattern']}
+
+## How to Apply
+
+When implementing this principle:
+1. Design components that follow the principle's guidance
+2. Validate your implementation adheres to the code pattern
+3. Use `check_cis_compliance` to verify your code
+4. Refer to `get_bible_section` for deeper understanding"""
+        else:
+            principles_list = []
+            for name, p in self.CIS_SEVEN_PRINCIPLES.items():
+                principles_list.append(f"""
+### {name.replace('_', ' ').title()}
+**Principle:** {p['principle']}
+**Code Pattern:** {p['code_pattern']}
+""")
+            
+            result = f"""# The Seven Principles of CIS (Circulatory Informatics System)
+
+These principles guide the design of living, adaptive software systems inspired by biological organisms.
+
+{chr(10).join(principles_list)}
+
+## Usage
+
+Use `get_cis_principles` with a specific principle name for detailed guidance:
+- `get_cis_principles(principle="distributed_autonomy")`
+- `get_cis_principles(principle="graceful_degradation")`
+
+Use `check_cis_compliance` to validate your code against these principles."""
+        
+        return [TextContent(type="text", text=result)]
+
+    async def _get_llm_coding_aid(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Get guidance for common LLM coding issues"""
+        issue_type = arguments.get("issue_type")
+        
+        if issue_type:
+            if issue_type not in self.LLM_CODING_AIDS:
+                return [TextContent(
+                    type="text",
+                    text=f"Error: Unknown issue type '{issue_type}'. Available: {', '.join(self.LLM_CODING_AIDS.keys())}"
+                )]
+            
+            aid = self.LLM_CODING_AIDS[issue_type]
+            solutions_list = "\n".join([f"- {s}" for s in aid['solutions']])
+            
+            result = f"""# LLM Coding Aid: {issue_type.replace('_', ' ').title()}
+
+## Problem Description
+{aid['description']}
+
+## Solutions
+{solutions_list}
+
+## Prevention Strategy
+
+To prevent this issue in future code generation:
+1. Include explicit constraints in your contracts
+2. Provide working examples that demonstrate the correct approach
+3. Use validation rules to catch violations
+4. Record successful fixes with `record_error_pattern`
+
+## Related CIS Principles
+
+This issue relates to:
+- **Memory and Learning**: Learn from past mistakes
+- **Feedback-Driven Adaptation**: Use validation feedback to improve"""
+        else:
+            aids_list = []
+            for name, aid in self.LLM_CODING_AIDS.items():
+                aids_list.append(f"- **{name.replace('_', ' ').title()}**: {aid['description']}")
+            
+            result = f"""# LLM Coding Aids
+
+Common issues encountered when using LLMs for code generation and their solutions.
+
+## Available Aids
+
+{chr(10).join(aids_list)}
+
+## Usage
+
+Get detailed guidance for a specific issue:
+```
+get_llm_coding_aid(issue_type="context_window_overflow")
+get_llm_coding_aid(issue_type="hallucinated_imports")
+```
+
+## Integration with CIS
+
+These aids integrate with the Circulatory Informatics System methodology:
+- Use contracts to prevent issues upfront
+- Validate implementations to catch issues
+- Record patterns to learn from fixes"""
+        
+        return [TextContent(type="text", text=result)]
+
+    async def _get_bible_section(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Get a section from the Circulatory Informatics Bible"""
+        section = arguments.get("section")
+        if section is None:
+            return [TextContent(
+                type="text",
+                text="Error: missing required argument 'section' for Bible lookup."
+            )]
+        if not self.bible_content:
+            return [TextContent(
+                type="text",
+                text="""# Circulatory Informatics Bible
+
+The Bible file was not found. Please ensure the 'Bible' file is present in the repository root.
+
+## Core Concepts (Summary)
+
+The Circulatory Informatics System treats software as a living organism:
+
+1. **Biological Metaphors**: Systems are organisms, not machines
+2. **The Seven Principles**: Distributed autonomy, continuous sensing, feedback-driven adaptation, emergent intelligence, memory and learning, graceful degradation, efficient resource flow
+3. **The Nine Systems**: Each maps to a biological system (Circulatory, Digestive, Nervous, etc.)
+4. **Vibe Coding**: Code that feels right - elegant, purposeful, aesthetically coherent
+
+Use `get_cis_principles` for detailed principle guidance."""
+            )]
+        
+        section_content = self._extract_bible_section(section)
+        
+        result = f"""# Circulatory Informatics Bible: {section.replace('_', ' ').title()}
+
+{section_content}
+
+---
+
+## Other Available Sections
+
+- `philosophy` - Philosophical foundations
+- `seven_principles` - The Seven Principles of Living Code
+- `nine_systems` - The Nine Systems architecture
+- `vibe_coding` - How Living Code Achieves Vibe Coding
+- `scientific_foundations` - Scientific foundations and research
+
+Use `get_bible_section(section="<name>")` to access other sections."""
+        
+        return [TextContent(type="text", text=result)]
+
+    async def _check_cis_compliance(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Check code for CIS principle compliance"""
+        code = arguments["code"]
+        component_description = arguments["component_description"]
+        
+        compliance_checks = []
+        recommendations = []
+        
+        # Convert code to lowercase once for efficiency
+        code_lower = code.lower()
+        
+        # Check for Distributed Autonomy indicators
+        event_indicators = [
+            r"\bevent[-_ ]?handler\b",
+            r"\bon_?event\b",
+            r"\bemit\b",
+            r"\bpublish(er|ing)?\b",
+            r"\bsubscribe(r|rs)?\b",
+            r"\bmessage[-_ ]queue\b",
+            r"\bmsg[-_ ]queue\b",
+            r"\bqueue\.",          # method calls on queue-like objects
+            r"\basync\s+def\b",
+            r"\bawait\s+",
+        ]
+        has_event_patterns = any(re.search(pattern, code_lower) for pattern in event_indicators)
+        compliance_checks.append({
+            "principle": "Distributed Autonomy",
+            "passed": has_event_patterns,
+            "detail": "Event-driven or async patterns found" if has_event_patterns else "Consider adding event-driven patterns for decoupling"
+        })
+        if not has_event_patterns:
+            recommendations.append("Add event-driven patterns (async/await, message queues) for better decoupling")
+        
+        # Check for Continuous Sensing (logging, monitoring) using word boundaries
+        observability_pattern = re.compile(
+            r"\b(?:log|logger|logging|metric|metrics|monitor|monitoring|trace|debug|info)\b",
+            re.IGNORECASE,
+        )
+        has_observability = bool(observability_pattern.search(code))
+        compliance_checks.append({
+            "principle": "Continuous Sensing",
+            "passed": has_observability,
+            "detail": "Logging/monitoring patterns found" if has_observability else "Add logging and monitoring for observability"
+        })
+        if not has_observability:
+            recommendations.append("Add logging statements for monitoring and debugging")
+        
+        # Check for Feedback-Driven Adaptation (error handling, retry)
+        # Use regex for more flexible matching of try blocks
+        error_handling_pattern = re.compile(
+            r"\btry\s*:|except\b|\bretry\b|\bfallback\b|\brecover\b",
+            re.IGNORECASE,
+        )
+        has_error_handling = bool(error_handling_pattern.search(code))
+        compliance_checks.append({
+            "principle": "Feedback-Driven Adaptation",
+            "passed": has_error_handling,
+            "detail": "Error handling patterns found" if has_error_handling else "Add try/except blocks and recovery mechanisms"
+        })
+        if not has_error_handling:
+            recommendations.append("Add try/except blocks and implement retry/recovery logic")
+        
+        # Check for Graceful Degradation (fallbacks, timeouts)
+        resilience_patterns = ['timeout', 'fallback', 'default_value', 'fallback_to', 'default_behavior', 'circuit', 'breaker', 'optional']
+        has_resilience = any(pattern in code_lower for pattern in resilience_patterns)
+        compliance_checks.append({
+            "principle": "Graceful Degradation",
+            "passed": has_resilience,
+            "detail": "Resilience patterns found" if has_resilience else "Add fallback mechanisms and timeouts"
+        })
+        if not has_resilience:
+            recommendations.append("Implement fallback mechanisms and timeouts for resilience")
+        
+        # Check for type hints (related to Emergent Intelligence - clear interfaces)
+        # Use regex to detect function/method signatures with type hints
+        type_hint_pattern = re.compile(
+            r'def\s+\w+\s*\([^)]*:\s*\w+[^)]*\)|def\s+\w+\s*\([^)]*\)\s*->'
+        )
+        has_type_hints = bool(type_hint_pattern.search(code)) or 'typing' in code_lower
+        compliance_checks.append({
+            "principle": "Emergent Intelligence (Clear Interfaces)",
+            "passed": has_type_hints,
+            "detail": "Type hints found" if has_type_hints else "Add type hints for clear interfaces"
+        })
+        if not has_type_hints:
+            recommendations.append("Add type hints for clearer interfaces between components")
+        
+        # Check for Memory and Learning (caching, history, patterns)
+        memory_patterns = [
+            r"\bcache\b", r"\bcached\b", r"\bmemoiz", r"\bhistory\b", 
+            r"\bpattern\b", r"\blearn", r"\bstore\b", r"\bremember\b"
+        ]
+        has_memory = any(re.search(pattern, code_lower) for pattern in memory_patterns)
+        compliance_checks.append({
+            "principle": "Memory and Learning",
+            "passed": has_memory,
+            "detail": "Memory/learning patterns found" if has_memory else "Consider adding caching or learning from past events"
+        })
+        if not has_memory:
+            recommendations.append("Consider implementing caching or learning from historical patterns")
+        
+        # Check for Efficient Resource Flow (pooling, lazy loading, scaling)
+        resource_patterns = [
+            r"\bpool\b", r"\bpooling\b", r"\blazy\b", r"\bscale\b", 
+            r"\bthrottle\b", r"\brate[-_ ]?limit\b", r"\bbatch\b"
+        ]
+        has_resource_flow = any(re.search(pattern, code_lower) for pattern in resource_patterns)
+        compliance_checks.append({
+            "principle": "Efficient Resource Flow",
+            "passed": has_resource_flow,
+            "detail": "Resource management patterns found" if has_resource_flow else "Consider adding resource pooling or demand-based scaling"
+        })
+        if not has_resource_flow:
+            recommendations.append("Consider implementing resource pooling, lazy loading, or demand-based scaling")
+        
+        # Calculate compliance score
+        passed_count = sum(1 for c in compliance_checks if c['passed'])
+        total_count = len(compliance_checks)
+        compliance_score = (passed_count / total_count) * 100 if total_count > 0 else 0
+        
+        # Format results
+        checks_output = []
+        for check in compliance_checks:
+            status = "✅" if check['passed'] else "❌"
+            checks_output.append(f"{status} **{check['principle']}**: {check['detail']}")
+        
+        recommendations_output = "\n".join([f"- {r}" for r in recommendations]) if recommendations else "No recommendations - code follows CIS principles well!"
+        
+        result = f"""# CIS Compliance Check
+
+## Component
+{component_description}
+
+## Compliance Score: {compliance_score:.0f}% ({passed_count}/{total_count} principles)
+
+## Principle Checks
+
+{chr(10).join(checks_output)}
+
+## Recommendations
+
+{recommendations_output}
+
+## Next Steps
+
+1. Address the recommendations above
+2. Use `get_cis_principles` for detailed guidance on specific principles
+3. Re-run `check_cis_compliance` after making changes
+4. Use `get_llm_coding_aid` if you encounter implementation issues"""
         
         return [TextContent(type="text", text=result)]
 

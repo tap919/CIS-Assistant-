@@ -10,6 +10,9 @@ CIS Assistant is an MCP server that enables AI applications (like Claude) to:
 - Learn from error patterns to provide better suggestions
 - Manage a library of code examples
 - Guide developers through contract-first development
+- **Access the Circulatory Informatics Bible for methodology adherence**
+- **Get guidance on common LLM coding issues**
+- **Check code for CIS principle compliance**
 
 ## Features
 
@@ -32,6 +35,21 @@ CIS Assistant is an MCP server that enables AI applications (like Claude) to:
 - Automated contract validation
 - Constraint checking
 - Type hint enforcement
+
+### 📖 Circulatory Informatics Bible Integration
+- Access Bible sections for methodology guidance
+- Seven Principles of Living Code reference
+- Nine Systems architecture patterns
+
+### 🔧 LLM Coding Aids
+- Solutions for common LLM coding issues
+- Guidance for context window overflow, hallucinated imports, etc.
+- Best practices for LLM-assisted development
+
+### 📊 CIS Compliance Checking
+- Validate code against CIS principles
+- Get recommendations for improvement
+- Compliance scoring
 
 ## Installation
 
@@ -171,6 +189,60 @@ Get details of a specific contract.
 **Parameters:**
 - `contract_id`: ID of the contract
 
+### 9. get_cis_principles
+Get CIS (Circulatory Informatics System) principles and methodology guidelines for maintaining adherence to circulatory informatics structure.
+
+**Parameters:**
+- `principle` (optional): Specific principle to retrieve. Options: `distributed_autonomy`, `continuous_sensing`, `feedback_driven_adaptation`, `emergent_intelligence`, `memory_and_learning`, `graceful_degradation`, `efficient_resource_flow`
+
+**Example:**
+```json
+{
+  "principle": "graceful_degradation"
+}
+```
+
+### 10. get_llm_coding_aid
+Get guidance for common LLM coding issues and their solutions.
+
+**Parameters:**
+- `issue_type` (optional): Type of LLM coding issue. Options: `context_window_overflow`, `hallucinated_imports`, `inconsistent_naming`, `missing_error_handling`, `type_hint_inconsistency`, `incomplete_implementation`, `security_vulnerabilities`, `logic_drift`
+
+**Example:**
+```json
+{
+  "issue_type": "hallucinated_imports"
+}
+```
+
+### 11. get_bible_section
+Get a section from the Circulatory Informatics Bible for methodology reference and adherence guidance.
+
+**Parameters:**
+- `section`: Section to retrieve. Options: `philosophy`, `seven_principles`, `nine_systems`, `vibe_coding`, `scientific_foundations`
+
+**Example:**
+```json
+{
+  "section": "seven_principles"
+}
+```
+
+### 12. check_cis_compliance
+Check if code or design adheres to CIS principles and get recommendations for improvement.
+
+**Parameters:**
+- `code`: Code to check for CIS compliance
+- `component_description`: Description of what the component does
+
+**Example:**
+```json
+{
+  "code": "class DataProcessor:\n    def process(self, data):\n        return data",
+  "component_description": "A data processing class"
+}
+```
+
 ## Available Prompts
 
 ### 1. contract_first_development
@@ -182,6 +254,19 @@ Guide for contract-first development workflow.
 Guide for debugging validation errors.
 
 **Usage:** Helps debug validation errors with specific steps and suggestions.
+
+### 3. cis_methodology_guide
+Guide for implementing code following Circulatory Informatics System principles.
+
+**Usage:** Provides comprehensive guidance on the Seven Principles of Living Code and how to apply them in your implementations.
+
+**Arguments:**
+- `focus_area` (optional): Area to focus on - `architecture`, `error_handling`, `observability`, `resilience`
+
+### 4. llm_coding_best_practices
+Best practices for LLM-assisted code generation to avoid common issues.
+
+**Usage:** Provides a comprehensive guide to common LLM coding issues and their solutions.
 
 ## Workflow Example
 
