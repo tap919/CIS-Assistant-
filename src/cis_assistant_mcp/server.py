@@ -1386,8 +1386,20 @@ Use `get_bible_section(section="<name>")` to access other sections."""
         recommendations = []
         
         # Check for Distributed Autonomy indicators
-        has_event_patterns = any(pattern in code.lower() for pattern in 
-                                 ['event', 'message', 'queue', 'publish', 'subscribe', 'async'])
+        code_lower = code.lower()
+        event_indicators = [
+            r"\bevent[-_ ]?handler\b",
+            r"\bon_?event\b",
+            r"\bemit\b",
+            r"\bpublish(er|ing)?\b",
+            r"\bsubscribe(r|rs)?\b",
+            r"\bmessage[-_ ]queue\b",
+            r"\bmsg[-_ ]queue\b",
+            r"\bqueue\.",          # method calls on queue-like objects
+            r"\basync\s+def\b",
+            r"\bawait\s+",
+        ]
+        has_event_patterns = any(re.search(pattern, code_lower) for pattern in event_indicators)
         compliance_checks.append({
             "principle": "Distributed Autonomy",
             "passed": has_event_patterns,
