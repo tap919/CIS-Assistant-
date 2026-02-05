@@ -177,27 +177,57 @@ class CISAssistantServer:
         # Register handlers
         self._setup_handlers()
     
+    def _is_safe_bible_path(self, path: Path, allowed_roots: List[Path]) -> bool:
+        """
+        Validate that the requested Bible path is within one of the allowed roots.
+        This prevents the CIS_BIBLE_PATH environment variable from pointing to
+        arbitrary locations on the filesystem.
+        """
+        try:
+            resolved_path = path.expanduser().resolve()
+        except Exception:
+            # If resolution fails (e.g., due to symlink issues), treat as unsafe.
+            return False
+
+        for root in allowed_roots:
+            try:
+                # Will raise ValueError if resolved_path is not within root.
+                resolved_path.relative_to(root)
+                return True
+            except ValueError:
+                continue
+        return False
+
     def _load_bible_content(self) -> str:
         """Load the Circulatory Informatics Bible content"""
         # Try to find the Bible file relative to the package or from environment
+        base_file_path = Path(__file__).resolve()
+        allowed_roots: List[Path] = [
+            base_file_path.parents[3],
+            base_file_path.parents[2],
+            Path.cwd().resolve(),
+        ]
+
         bible_env_path = os.environ.get("CIS_BIBLE_PATH")
         
-        possible_paths = []
+        possible_paths: List[Path] = []
         if bible_env_path:
-            possible_paths.append(Path(bible_env_path))
+            env_candidate = Path(bible_env_path)
+            if self._is_safe_bible_path(env_candidate, allowed_roots):
+                possible_paths.append(env_candidate)
         
         possible_paths.extend([
-            Path(__file__).parent.parent.parent.parent / "Bible",
-            Path(__file__).parent.parent.parent / "Bible",
-            Path.cwd() / "Bible",
+            base_file_path.parents[3] / "Bible",
+            base_file_path.parents[2] / "Bible",
+            Path.cwd().resolve() / "Bible",
         ])
         
         for bible_path in possible_paths:
-            if bible_path.exists():
+            if bible_path.is_file():
                 try:
                     with open(bible_path, 'r', encoding='utf-8') as f:
                         return f.read()
-                except (IOError, OSError, FileNotFoundError):
+                except (OSError, UnicodeDecodeError):
                     # Continue to try other paths if this one fails
                     continue
         
@@ -1385,8 +1415,10 @@ Use `get_bible_section(section="<name>")` to access other sections."""
         compliance_checks = []
         recommendations = []
         
-        # Check for Distributed Autonomy indicators
+        # Convert code to lowercase once for efficiency
         code_lower = code.lower()
+        
+        # Check for Distributed Autonomy indicators
         event_indicators = [
             r"\bevent[-_ ]?handler\b",
             r"\bon_?event\b",
@@ -1408,9 +1440,12 @@ Use `get_bible_section(section="<name>")` to access other sections."""
         if not has_event_patterns:
             recommendations.append("Add event-driven patterns (async/await, message queues) for better decoupling")
         
-        # Check for Continuous Sensing (logging, monitoring)
-        has_observability = any(pattern in code.lower() for pattern in 
-                                ['log', 'logger', 'metric', 'monitor', 'trace', 'debug', 'info'])
+        # Check for Continuous Sensing (logging, monitoring) using word boundaries
+        observability_pattern = re.compile(
+            r"\b(?:log|logger|logging|metric|metrics|monitor|monitoring|trace|debug|info)\b",
+            re.IGNORECASE,
+        )
+        has_observability = bool(observability_pattern.search(code))
         compliance_checks.append({
             "principle": "Continuous Sensing",
             "passed": has_observability,
@@ -1420,8 +1455,12 @@ Use `get_bible_section(section="<name>")` to access other sections."""
             recommendations.append("Add logging statements for monitoring and debugging")
         
         # Check for Feedback-Driven Adaptation (error handling, retry)
-        has_error_handling = any(pattern in code.lower() for pattern in 
-                                 ['try:', 'except', 'retry', 'fallback', 'recover'])
+        # Use regex for more flexible matching of try blocks
+        error_handling_pattern = re.compile(
+            r"\btry\s*:|except\b|\bretry\b|\bfallback\b|\brecover\b",
+            re.IGNORECASE,
+        )
+        has_error_handling = bool(error_handling_pattern.search(code))
         compliance_checks.append({
             "principle": "Feedback-Driven Adaptation",
             "passed": has_error_handling,
@@ -1431,8 +1470,8 @@ Use `get_bible_section(section="<name>")` to access other sections."""
             recommendations.append("Add try/except blocks and implement retry/recovery logic")
         
         # Check for Graceful Degradation (fallbacks, timeouts)
-        has_resilience = any(pattern in code.lower() for pattern in 
-                            ['timeout', 'fallback', 'default_value', 'fallback_to', 'default_behavior', 'circuit', 'breaker', 'optional'])
+        resilience_patterns = ['timeout', 'fallback', 'default_value', 'fallback_to', 'default_behavior', 'circuit', 'breaker', 'optional']
+        has_resilience = any(pattern in code_lower for pattern in resilience_patterns)
         compliance_checks.append({
             "principle": "Graceful Degradation",
             "passed": has_resilience,
@@ -1446,7 +1485,7 @@ Use `get_bible_section(section="<name>")` to access other sections."""
         type_hint_pattern = re.compile(
             r'def\s+\w+\s*\([^)]*:\s*\w+[^)]*\)|def\s+\w+\s*\([^)]*\)\s*->'
         )
-        has_type_hints = bool(type_hint_pattern.search(code)) or 'typing' in code.lower()
+        has_type_hints = bool(type_hint_pattern.search(code)) or 'typing' in code_lower
         compliance_checks.append({
             "principle": "Emergent Intelligence (Clear Interfaces)",
             "passed": has_type_hints,
@@ -1454,6 +1493,34 @@ Use `get_bible_section(section="<name>")` to access other sections."""
         })
         if not has_type_hints:
             recommendations.append("Add type hints for clearer interfaces between components")
+        
+        # Check for Memory and Learning (caching, history, patterns)
+        memory_patterns = [
+            r"\bcache\b", r"\bcached\b", r"\bmemoiz", r"\bhistory\b", 
+            r"\bpattern\b", r"\blearn", r"\bstore\b", r"\bremember\b"
+        ]
+        has_memory = any(re.search(pattern, code_lower) for pattern in memory_patterns)
+        compliance_checks.append({
+            "principle": "Memory and Learning",
+            "passed": has_memory,
+            "detail": "Memory/learning patterns found" if has_memory else "Consider adding caching or learning from past events"
+        })
+        if not has_memory:
+            recommendations.append("Consider implementing caching or learning from historical patterns")
+        
+        # Check for Efficient Resource Flow (pooling, lazy loading, scaling)
+        resource_patterns = [
+            r"\bpool\b", r"\bpooling\b", r"\blazy\b", r"\bscale\b", 
+            r"\bthrottle\b", r"\brate[-_ ]?limit\b", r"\bbatch\b"
+        ]
+        has_resource_flow = any(re.search(pattern, code_lower) for pattern in resource_patterns)
+        compliance_checks.append({
+            "principle": "Efficient Resource Flow",
+            "passed": has_resource_flow,
+            "detail": "Resource management patterns found" if has_resource_flow else "Consider adding resource pooling or demand-based scaling"
+        })
+        if not has_resource_flow:
+            recommendations.append("Consider implementing resource pooling, lazy loading, or demand-based scaling")
         
         # Calculate compliance score
         passed_count = sum(1 for c in compliance_checks if c['passed'])
