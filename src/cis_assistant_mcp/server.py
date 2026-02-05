@@ -232,10 +232,61 @@ class CISAssistantServer:
             return f"Section '{section_name}' not found in Bible content."
         
         if end_idx == -1:
-            return self.bible_content[start_idx:][:self.MAX_BIBLE_SECTION_LENGTH]
+            return self._truncate_bible_section(self.bible_content[start_idx:])
         
-        return self.bible_content[start_idx:end_idx][:self.MAX_BIBLE_SECTION_LENGTH]
+        return self._truncate_bible_section(self.bible_content[start_idx:end_idx])
 
+    def _truncate_bible_section(self, text: str) -> str:
+        """
+        Truncate Bible section text to MAX_BIBLE_SECTION_LENGTH, preferring
+        sentence/paragraph boundaries and indicating when content is truncated.
+        """
+        # If no limit is defined for some reason, or text is already short enough,
+        # return the text unchanged.
+        max_len = getattr(self, "MAX_BIBLE_SECTION_LENGTH", None)
+        if max_len is None or len(text) <= max_len:
+            return text
+        
+        # Reserve space for ellipsis when truncating.
+        ellipsis = "..."
+        if max_len <= len(ellipsis):
+            # Degenerate case: not enough room for ellipsis and content.
+            return text[:max_len]
+        
+        # Work with a base slice within the maximum length.
+        base = text[:max_len]
+        
+        # Try to find a natural boundary (paragraph or sentence end) within base.
+        boundary_indices: list[int] = []
+        
+        # Prefer paragraph boundaries first.
+        for marker in ["\n\n", "\n"]:
+            idx = base.rfind(marker)
+            if idx != -1:
+                # Cut at the end of the marker.
+                boundary_indices.append(idx + len(marker))
+                break
+        
+        # If no paragraph boundary found, look for sentence endings.
+        if not boundary_indices:
+            for marker in [". ", "? ", "! "]:
+                idx = base.rfind(marker)
+                if idx != -1:
+                    boundary_indices.append(idx + len(marker))
+                    break
+        
+        if boundary_indices:
+            cut_pos = boundary_indices[0]
+            candidate = base[:cut_pos].rstrip()
+        else:
+            # Fall back to a hard cut just before the ellipsis space.
+            candidate = base[: max_len - len(ellipsis)].rstrip()
+        
+        # Ensure final result (candidate + ellipsis) does not exceed max_len.
+        if len(candidate) + len(ellipsis) > max_len:
+            candidate = candidate[: max_len - len(ellipsis)]
+        
+        return candidate + ellipsis
     def _setup_handlers(self):
         """Setup MCP server handlers"""
         
