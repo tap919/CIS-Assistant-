@@ -53,6 +53,7 @@ class CISAssistantServer:
     # Constants for code truncation
     MAX_CODE_SNIPPET_LENGTH = 500
     MAX_BEFORE_AFTER_LENGTH = 200
+    MAX_BIBLE_SECTION_LENGTH = 5000
     
     # Common LLM coding issues and their solutions
     LLM_CODING_AIDS = {
@@ -181,20 +182,27 @@ class CISAssistantServer:
     
     def _load_bible_content(self) -> str:
         """Load the Circulatory Informatics Bible content"""
-        # Try to find the Bible file relative to the package
-        possible_paths = [
+        # Try to find the Bible file relative to the package or from environment
+        bible_env_path = os.environ.get("CIS_BIBLE_PATH")
+        
+        possible_paths = []
+        if bible_env_path:
+            possible_paths.append(Path(bible_env_path))
+        
+        possible_paths.extend([
             Path(__file__).parent.parent.parent.parent / "Bible",
             Path(__file__).parent.parent.parent / "Bible",
             Path.cwd() / "Bible",
-        ]
+        ])
         
         for bible_path in possible_paths:
             if bible_path.exists():
                 try:
                     with open(bible_path, 'r', encoding='utf-8') as f:
                         return f.read()
-                except Exception:
-                    pass
+                except (IOError, OSError, FileNotFoundError):
+                    # Continue to try other paths if this one fails
+                    continue
         
         return ""
     
@@ -224,9 +232,9 @@ class CISAssistantServer:
             return f"Section '{section_name}' not found in Bible content."
         
         if end_idx == -1:
-            return self.bible_content[start_idx:][:5000]  # Limit to 5000 chars
+            return self.bible_content[start_idx:][:self.MAX_BIBLE_SECTION_LENGTH]
         
-        return self.bible_content[start_idx:end_idx][:5000]  # Limit to 5000 chars
+        return self.bible_content[start_idx:end_idx][:self.MAX_BIBLE_SECTION_LENGTH]
 
     def _setup_handlers(self):
         """Setup MCP server handlers"""
@@ -1348,7 +1356,7 @@ Use `get_bible_section(section="<name>")` to access other sections."""
             recommendations.append("Add logging statements for monitoring and debugging")
         
         # Check for Feedback-Driven Adaptation (error handling, retry)
-        has_error_handling = any(pattern in code for pattern in 
+        has_error_handling = any(pattern in code.lower() for pattern in 
                                  ['try:', 'except', 'retry', 'fallback', 'recover'])
         compliance_checks.append({
             "principle": "Feedback-Driven Adaptation",
@@ -1370,7 +1378,9 @@ Use `get_bible_section(section="<name>")` to access other sections."""
             recommendations.append("Implement fallback mechanisms and timeouts for resilience")
         
         # Check for type hints (related to Emergent Intelligence - clear interfaces)
-        has_type_hints = '->' in code or ': ' in code
+        # Use regex to detect function/method signatures with type hints
+        type_hint_pattern = re.compile(r'def\s+\w+\s*\([^)]*:.*\)|def\s+\w+\s*\([^)]*\)\s*->')
+        has_type_hints = bool(type_hint_pattern.search(code)) or 'typing' in code.lower()
         compliance_checks.append({
             "principle": "Emergent Intelligence (Clear Interfaces)",
             "passed": has_type_hints,
