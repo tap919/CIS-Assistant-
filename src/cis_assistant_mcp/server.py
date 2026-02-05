@@ -1284,8 +1284,12 @@ These aids integrate with the Circulatory Informatics System methodology:
 
     async def _get_bible_section(self, arguments: Dict[str, Any]) -> list[TextContent]:
         """Get a section from the Circulatory Informatics Bible"""
-        section = arguments.get("section", "philosophy")
-        
+        section = arguments.get("section")
+        if section is None:
+            return [TextContent(
+                type="text",
+                text="Error: missing required argument 'section' for Bible lookup."
+            )]
         if not self.bible_content:
             return [TextContent(
                 type="text",
