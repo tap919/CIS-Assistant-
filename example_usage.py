@@ -193,6 +193,101 @@ def validate_dict(data: Dict[str, Any]) -> bool:
     print("Run with: python -m cis_assistant_mcp.server")
     print()
 
+    print()
+    print("=" * 60)
+    print("BLOCKCHAIN SUPPLY CHAIN FEATURES - DEMONSTRATION")
+    print("=" * 60)
+    print()
+
+    # Example 9: Get Base network info
+    print("9. Getting Base L2 network information...")
+    print("-" * 60)
+
+    result = await server._get_base_network_info({"network": "mainnet"})
+    print(result[0].text)
+    print()
+
+    # Example 10: Browse supply chain templates
+    print("\n10. Browsing supply chain smart contract templates...")
+    print("-" * 60)
+
+    result = await server._get_supply_chain_templates({})
+    print(result[0].text)
+    print()
+
+    # Example 11: Generate a supply chain contract
+    print("\n11. Generating a Product Tracking smart contract...")
+    print("-" * 60)
+
+    result = await server._generate_supply_chain_contract({
+        "template_type": "product_tracking",
+        "business_name": "FreshFarm Foods"
+    })
+    print(result[0].text)
+    print()
+
+    # Example 12: Validate a smart contract
+    print("\n12. Validating a smart contract for security issues...")
+    print("-" * 60)
+
+    sample_contract = """// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+contract SimpleTracker {
+    mapping(uint256 => string) public items;
+    uint256 public itemCount;
+
+    event ItemAdded(uint256 indexed id, string name);
+
+    modifier onlyOwner() {
+        _;
+    }
+
+    function addItem(string memory _name) external onlyOwner {
+        require(bytes(_name).length > 0, "Name required");
+        itemCount++;
+        items[itemCount] = _name;
+        emit ItemAdded(itemCount, _name);
+    }
+}"""
+
+    result = await server._validate_smart_contract({
+        "code": sample_contract,
+        "contract_type": "product_tracking"
+    })
+    print(result[0].text)
+    print()
+
+    # Example 13: Get business onboarding guide
+    print("\n13. Getting small business onboarding guide for retail...")
+    print("-" * 60)
+
+    result = await server._get_business_onboarding_guide({
+        "guide_section": "use_case_guide",
+        "business_type": "retail"
+    })
+    print(result[0].text)
+    print()
+
+    # Example 14: Get cost analysis
+    print("\n14. Getting blockchain cost analysis...")
+    print("-" * 60)
+
+    result = await server._get_business_onboarding_guide({
+        "guide_section": "cost_analysis"
+    })
+    print(result[0].text)
+    print()
+
+    print("=" * 60)
+    print("FULL DEMONSTRATION COMPLETE")
+    print("=" * 60)
+    print()
+    print("The CIS Assistant MCP server with blockchain supply chain")
+    print("features is ready to use!")
+    print("Run with: python -m cis_assistant_mcp.server")
+    print()
+
 
 if __name__ == "__main__":
     asyncio.run(demo())
