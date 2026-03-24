@@ -315,7 +315,7 @@ contract SupplierRegistry {
         string location;
         uint256 registeredAt;
         uint256 completedOrders;
-        uint256 rating;  // 1-500 (representing 0.2 - 100.0 in increments of 0.2)
+        uint256 rating;  // 0-500 scale (0 = unrated, 1-500 for scored suppliers)
         bool verified;
         bool active;
     }
@@ -379,7 +379,7 @@ contract SupplierRegistry {
     }
 
     function updateRating(address _supplier, uint256 _rating) external onlyVerifier {
-        require(_rating >= 1 && _rating <= 500, "Rating must be 1-500");
+        require(_rating <= 500, "Rating must be 0-500");
         require(suppliers[_supplier].wallet != address(0), "Supplier not found");
         suppliers[_supplier].rating = _rating;
         emit RatingUpdated(_supplier, _rating);
@@ -574,6 +574,7 @@ contract CertificationNFT {
 
     function verifyCertification(uint256 _certId) external view returns (bool valid, string memory certType) {
         Certification memory cert = certifications[_certId];
+        // expiresAt == 0 means the certification never expires
         valid = !cert.revoked && (cert.expiresAt == 0 || cert.expiresAt > block.timestamp);
         certType = cert.certType;
     }
@@ -2647,7 +2648,7 @@ Use `get_business_onboarding_guide(guide_section="use_case_guide", business_type
             })
 
         # Check for pragma solidity version
-        pragma_match = re.search(r'pragma\s+solidity\s+[\^~]?(\d+\.\d+\.\d+)', code)
+        pragma_match = re.search(r'pragma\s+solidity\s+[\^~>=<]*\s*(\d+)\.(\d+)(?:\.(\d+))?', code)
         if not pragma_match:
             issues.append({
                 "severity": "high",
@@ -2656,26 +2657,30 @@ Use `get_business_onboarding_guide(guide_section="use_case_guide", business_type
                 "fix": "Add 'pragma solidity ^0.8.19;' at the top of the file",
             })
         else:
-            version = pragma_match.group(1)
-            major, minor, _ = version.split(".")
-            if int(major) == 0 and int(minor) < 8:
+            major = int(pragma_match.group(1))
+            minor = int(pragma_match.group(2))
+            version_str = f"{major}.{minor}" + (f".{pragma_match.group(3)}" if pragma_match.group(3) else "")
+            if major == 0 and minor < 8:
                 issues.append({
                     "severity": "high",
                     "type": "old_solidity_version",
-                    "message": f"Solidity version {version} is outdated; use 0.8.x+ for built-in overflow protection",
+                    "message": f"Solidity version {version_str} is outdated; use 0.8.x+ for built-in overflow protection",
                     "fix": "Update pragma to 'pragma solidity ^0.8.19;' for safety features",
                 })
 
         # Check for reentrancy patterns
         if re.search(r'\.call\s*\{', code) or ".call{" in code:
             if "reentrancyguard" not in code_lower and "nonreentrant" not in code_lower:
-                # Check if state changes happen after external call
-                call_pos = code.find(".call{")
-                if call_pos == -1:
-                    call_pos = code.find(".call {")
-                if call_pos != -1:
-                    after_call = code[call_pos:]
-                    if re.search(r'\b\w+\s*=\s*', after_call):
+                # Check if state changes happen after external call within the same function
+                call_match = re.search(r'\.call\s*\{', code)
+                if call_match:
+                    call_pos = call_match.start()
+                    # Scope to the next closing brace of the function (approximation)
+                    next_func = code.find("function ", call_pos + 1)
+                    scope_end = next_func if next_func != -1 else len(code)
+                    after_call = code[call_pos:scope_end]
+                    # Look for state-changing assignments (exclude local variable declarations)
+                    if re.search(r'\b\w+\[\w+\]\s*[.=]|\b\w+\.\w+\s*=', after_call):
                         issues.append({
                             "severity": "critical",
                             "type": "potential_reentrancy",
@@ -2690,7 +2695,8 @@ Use `get_business_onboarding_guide(guide_section="use_case_guide", business_type
         # Check for access control
         access_patterns = ["onlyowner", "onlyrole", "modifier", "require(msg.sender"]
         has_access_control = any(p in code_lower for p in access_patterns)
-        if not has_access_control and ("function" in code_lower):
+        has_function_declarations = bool(re.search(r'\bfunction\s+\w+\s*\(', code))
+        if not has_access_control and has_function_declarations:
             issues.append({
                 "severity": "high",
                 "type": "missing_access_control",
@@ -2725,7 +2731,7 @@ Use `get_business_onboarding_guide(guide_section="use_case_guide", business_type
 
         # Check for address(0) checks
         if "address" in code_lower and "address(0)" not in code:
-            if "address _" in code or "address memory" in code:
+            if re.search(r'\baddress\s+_\w+', code):
                 recommendations.append("Consider adding address(0) checks for address parameters")
 
         # Base L2 specific recommendations
