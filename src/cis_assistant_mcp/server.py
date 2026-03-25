@@ -2721,7 +2721,9 @@ Use `get_business_onboarding_guide(guide_section="use_case_guide", business_type
             })
 
         # Check for input validation
-        if "require(" not in code and "revert " not in code:
+        has_require = re.search(r'\brequire\s*\(', code)
+        has_revert = re.search(r'\brevert\s*\(', code)
+        if not has_require and not has_revert:
             issues.append({
                 "severity": "high",
                 "type": "missing_input_validation",
