@@ -3,10 +3,13 @@
 CIS Assistant MCP Server
 
 This server provides tools for LLM-augmented code development using the
-Circulatory Informatics System (CIS) methodology.
+Circulatory Informatics System (CIS) methodology, enhanced with blockchain
+automation for the Base layer 2 platform.
 
 The server integrates the Circulatory Informatics Bible to maintain adherence
-to CIS structure and provides aids for common LLM coding issues.
+to CIS structure, provides aids for common LLM coding issues, and serves as
+a bridge between supply chain management, blockchain technology, and small
+business adoption on the Base L2 network.
 """
 
 import asyncio
@@ -32,7 +35,7 @@ from mcp.types import (
 class CISAssistantServer:
     """
     MCP Server for CIS Assistant
-    
+
     Provides tools for:
     - Contract generation for software components
     - Code implementation with validation
@@ -41,7 +44,10 @@ class CISAssistantServer:
     - Error pattern analysis
     - Circulatory Informatics methodology guidance
     - Common LLM coding issue aids
-    
+    - Base L2 blockchain automation and network information
+    - Supply chain smart contract generation and validation
+    - Small business blockchain onboarding guidance
+
     Note: This implementation uses in-memory storage. All contracts, patterns,
     and examples will be lost when the server restarts. For production use,
     consider implementing persistent storage using files or a database.
@@ -167,13 +173,504 @@ class CISAssistantServer:
         }
     }
 
+    # Base L2 Network Configuration
+    BASE_NETWORK_CONFIG = {
+        "mainnet": {
+            "name": "Base Mainnet",
+            "chain_id": 8453,
+            "rpc_url": "https://mainnet.base.org",
+            "block_explorer": "https://basescan.org",
+            "bridge": "https://bridge.base.org",
+            "currency": "ETH",
+            "layer": "L2 (Optimistic Rollup on Ethereum)",
+            "avg_block_time": "2 seconds",
+            "avg_gas_cost": "< $0.01 USD",
+            "description": "Base is a secure, low-cost, builder-friendly Ethereum L2 built to bring the next billion users onchain.",
+        },
+        "sepolia": {
+            "name": "Base Sepolia (Testnet)",
+            "chain_id": 84532,
+            "rpc_url": "https://sepolia.base.org",
+            "block_explorer": "https://sepolia.basescan.org",
+            "bridge": "https://bridge.base.org",
+            "currency": "ETH (Testnet)",
+            "layer": "L2 Testnet (Optimistic Rollup on Ethereum Sepolia)",
+            "avg_block_time": "2 seconds",
+            "avg_gas_cost": "Free (testnet)",
+            "description": "Base Sepolia testnet for development and testing.",
+        },
+    }
+
+    # Supply Chain Smart Contract Templates
+    SUPPLY_CHAIN_TEMPLATES = {
+        "product_tracking": {
+            "name": "Product Tracking",
+            "description": "Track products through the supply chain with provenance verification",
+            "use_cases": [
+                "Food safety and traceability",
+                "Pharmaceutical tracking",
+                "Manufacturing parts tracking",
+                "Retail inventory management",
+            ],
+            "solidity_template": '''// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+/**
+ * @title ProductTracking
+ * @dev Track products through supply chain stages on Base L2
+ * @notice Low gas costs on Base make per-item tracking economically viable
+ */
+contract ProductTracking {
+    enum Stage { Created, InTransit, Delivered, Verified }
+
+    struct Product {
+        uint256 id;
+        string name;
+        string origin;
+        address currentHolder;
+        Stage stage;
+        uint256 createdAt;
+        uint256 updatedAt;
+    }
+
+    mapping(uint256 => Product) public products;
+    mapping(uint256 => address[]) public productHistory;
+    uint256 public productCount;
+
+    event ProductCreated(uint256 indexed id, string name, string origin, address creator);
+    event ProductTransferred(uint256 indexed id, address indexed from, address indexed to, Stage stage);
+    event ProductVerified(uint256 indexed id, address verifier);
+
+    modifier onlyHolder(uint256 _productId) {
+        require(products[_productId].currentHolder == msg.sender, "Not current holder");
+        _;
+    }
+
+    function createProduct(string memory _name, string memory _origin) external returns (uint256) {
+        productCount++;
+        products[productCount] = Product({
+            id: productCount,
+            name: _name,
+            origin: _origin,
+            currentHolder: msg.sender,
+            stage: Stage.Created,
+            createdAt: block.timestamp,
+            updatedAt: block.timestamp
+        });
+        productHistory[productCount].push(msg.sender);
+        emit ProductCreated(productCount, _name, _origin, msg.sender);
+        return productCount;
+    }
+
+    function transferProduct(uint256 _productId, address _to) external onlyHolder(_productId) {
+        Product storage product = products[_productId];
+        product.currentHolder = _to;
+        product.stage = Stage.InTransit;
+        product.updatedAt = block.timestamp;
+        productHistory[_productId].push(_to);
+        emit ProductTransferred(_productId, msg.sender, _to, Stage.InTransit);
+    }
+
+    function confirmDelivery(uint256 _productId) external onlyHolder(_productId) {
+        Product storage product = products[_productId];
+        product.stage = Stage.Delivered;
+        product.updatedAt = block.timestamp;
+        emit ProductTransferred(_productId, msg.sender, msg.sender, Stage.Delivered);
+    }
+
+    function verifyProduct(uint256 _productId) external onlyHolder(_productId) {
+        Product storage product = products[_productId];
+        product.stage = Stage.Verified;
+        product.updatedAt = block.timestamp;
+        emit ProductVerified(_productId, msg.sender);
+    }
+
+    function getProductHistory(uint256 _productId) external view returns (address[] memory) {
+        return productHistory[_productId];
+    }
+}''',
+        },
+        "supplier_registry": {
+            "name": "Supplier Registry",
+            "description": "Decentralized registry for verified suppliers and vendors",
+            "use_cases": [
+                "Vendor onboarding and verification",
+                "Supplier reputation tracking",
+                "B2B marketplace trust layer",
+                "Small business discovery",
+            ],
+            "solidity_template": '''// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+/**
+ * @title SupplierRegistry
+ * @dev Decentralized supplier registry for Base L2 supply chain
+ * @notice Enables small businesses to build on-chain reputation
+ */
+contract SupplierRegistry {
+    struct Supplier {
+        address wallet;
+        string businessName;
+        string category;
+        string location;
+        uint256 registeredAt;
+        uint256 completedOrders;
+        uint256 rating;  // 0-500 scale (0 = unrated, 1-500 for scored suppliers)
+        bool verified;
+        bool active;
+    }
+
+    mapping(address => Supplier) public suppliers;
+    address[] public supplierList;
+    mapping(address => bool) public verifiers;
+    address public owner;
+
+    event SupplierRegistered(address indexed supplier, string businessName, string category);
+    event SupplierVerified(address indexed supplier, address indexed verifier);
+    event OrderCompleted(address indexed supplier, uint256 totalOrders);
+    event RatingUpdated(address indexed supplier, uint256 newRating);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    modifier onlyVerifier() {
+        require(verifiers[msg.sender], "Not a verifier");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+        verifiers[msg.sender] = true;
+    }
+
+    function registerSupplier(
+        string memory _businessName,
+        string memory _category,
+        string memory _location
+    ) external {
+        require(suppliers[msg.sender].wallet == address(0), "Already registered");
+        suppliers[msg.sender] = Supplier({
+            wallet: msg.sender,
+            businessName: _businessName,
+            category: _category,
+            location: _location,
+            registeredAt: block.timestamp,
+            completedOrders: 0,
+            rating: 0,
+            verified: false,
+            active: true
+        });
+        supplierList.push(msg.sender);
+        emit SupplierRegistered(msg.sender, _businessName, _category);
+    }
+
+    function verifySupplier(address _supplier) external onlyVerifier {
+        require(suppliers[_supplier].wallet != address(0), "Supplier not found");
+        suppliers[_supplier].verified = true;
+        emit SupplierVerified(_supplier, msg.sender);
+    }
+
+    function recordCompletedOrder(address _supplier) external onlyVerifier {
+        require(suppliers[_supplier].wallet != address(0), "Supplier not found");
+        suppliers[_supplier].completedOrders++;
+        emit OrderCompleted(_supplier, suppliers[_supplier].completedOrders);
+    }
+
+    function updateRating(address _supplier, uint256 _rating) external onlyVerifier {
+        require(_rating <= 500, "Rating must be 0-500");
+        require(suppliers[_supplier].wallet != address(0), "Supplier not found");
+        suppliers[_supplier].rating = _rating;
+        emit RatingUpdated(_supplier, _rating);
+    }
+
+    function addVerifier(address _verifier) external onlyOwner {
+        verifiers[_verifier] = true;
+    }
+
+    function getSupplierCount() external view returns (uint256) {
+        return supplierList.length;
+    }
+}''',
+        },
+        "invoice_management": {
+            "name": "Invoice Management",
+            "description": "On-chain invoice creation, tracking, and payment verification",
+            "use_cases": [
+                "B2B payment tracking",
+                "Invoice factoring and financing",
+                "Automated payment verification",
+                "Small business cash flow management",
+            ],
+            "solidity_template": '''// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+/**
+ * @title InvoiceManagement
+ * @dev On-chain invoice management for Base L2 supply chain
+ * @notice Enables transparent B2B payment tracking for small businesses
+ */
+contract InvoiceManagement {
+    enum InvoiceStatus { Created, Sent, Paid, Disputed, Resolved }
+
+    struct Invoice {
+        uint256 id;
+        address issuer;
+        address payer;
+        uint256 amount;
+        string description;
+        InvoiceStatus status;
+        uint256 createdAt;
+        uint256 dueDate;
+        uint256 paidAt;
+    }
+
+    mapping(uint256 => Invoice) public invoices;
+    mapping(address => uint256[]) public issuerInvoices;
+    mapping(address => uint256[]) public payerInvoices;
+    uint256 public invoiceCount;
+
+    event InvoiceCreated(uint256 indexed id, address indexed issuer, address indexed payer, uint256 amount);
+    event InvoicePaid(uint256 indexed id, address indexed payer, uint256 amount);
+    event InvoiceDisputed(uint256 indexed id, address indexed disputer);
+    event InvoiceResolved(uint256 indexed id);
+
+    function createInvoice(
+        address _payer,
+        uint256 _amount,
+        string memory _description,
+        uint256 _dueDate
+    ) external returns (uint256) {
+        require(_payer != address(0), "Invalid payer address");
+        require(_amount > 0, "Amount must be positive");
+        require(_dueDate > block.timestamp, "Due date must be in the future");
+
+        invoiceCount++;
+        invoices[invoiceCount] = Invoice({
+            id: invoiceCount,
+            issuer: msg.sender,
+            payer: _payer,
+            amount: _amount,
+            description: _description,
+            status: InvoiceStatus.Created,
+            createdAt: block.timestamp,
+            dueDate: _dueDate,
+            paidAt: 0
+        });
+        issuerInvoices[msg.sender].push(invoiceCount);
+        payerInvoices[_payer].push(invoiceCount);
+        emit InvoiceCreated(invoiceCount, msg.sender, _payer, _amount);
+        return invoiceCount;
+    }
+
+    function payInvoice(uint256 _invoiceId) external payable {
+        Invoice storage invoice = invoices[_invoiceId];
+        require(invoice.payer == msg.sender, "Not the designated payer");
+        require(invoice.status == InvoiceStatus.Created || invoice.status == InvoiceStatus.Sent, "Invoice not payable");
+        require(msg.value == invoice.amount, "Incorrect payment amount");
+
+        invoice.status = InvoiceStatus.Paid;
+        invoice.paidAt = block.timestamp;
+
+        (bool sent, ) = payable(invoice.issuer).call{value: msg.value}("");
+        require(sent, "Payment transfer failed");
+
+        emit InvoicePaid(_invoiceId, msg.sender, msg.value);
+    }
+
+    function disputeInvoice(uint256 _invoiceId) external {
+        Invoice storage invoice = invoices[_invoiceId];
+        require(
+            msg.sender == invoice.payer || msg.sender == invoice.issuer,
+            "Not a party to this invoice"
+        );
+        require(invoice.status != InvoiceStatus.Paid, "Already paid");
+        invoice.status = InvoiceStatus.Disputed;
+        emit InvoiceDisputed(_invoiceId, msg.sender);
+    }
+}''',
+        },
+        "certification_nft": {
+            "name": "Certification NFT",
+            "description": "Issue and verify supply chain certifications as NFTs",
+            "use_cases": [
+                "Quality certifications (ISO, organic, fair trade)",
+                "Compliance and audit records",
+                "Business license verification",
+                "Training and credential tracking",
+            ],
+            "solidity_template": '''// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+/**
+ * @title CertificationNFT
+ * @dev Issue supply chain certifications as NFTs on Base L2
+ * @notice Low-cost certification issuance for small business compliance
+ */
+contract CertificationNFT {
+    struct Certification {
+        uint256 id;
+        address issuer;
+        address holder;
+        string certType;
+        string details;
+        uint256 issuedAt;
+        uint256 expiresAt;
+        bool revoked;
+    }
+
+    mapping(uint256 => Certification) public certifications;
+    mapping(address => uint256[]) public holderCerts;
+    mapping(address => bool) public authorizedIssuers;
+    uint256 public certCount;
+    address public owner;
+
+    event CertificationIssued(uint256 indexed id, address indexed holder, string certType);
+    event CertificationRevoked(uint256 indexed id, address indexed revoker);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    modifier onlyAuthorizedIssuer() {
+        require(authorizedIssuers[msg.sender], "Not authorized issuer");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+        authorizedIssuers[msg.sender] = true;
+    }
+
+    function issueCertification(
+        address _holder,
+        string memory _certType,
+        string memory _details,
+        uint256 _expiresAt
+    ) external onlyAuthorizedIssuer returns (uint256) {
+        certCount++;
+        certifications[certCount] = Certification({
+            id: certCount,
+            issuer: msg.sender,
+            holder: _holder,
+            certType: _certType,
+            details: _details,
+            issuedAt: block.timestamp,
+            expiresAt: _expiresAt,
+            revoked: false
+        });
+        holderCerts[_holder].push(certCount);
+        emit CertificationIssued(certCount, _holder, _certType);
+        return certCount;
+    }
+
+    function revokeCertification(uint256 _certId) external onlyAuthorizedIssuer {
+        require(certifications[_certId].issuer == msg.sender, "Not the issuer");
+        certifications[_certId].revoked = true;
+        emit CertificationRevoked(_certId, msg.sender);
+    }
+
+    function verifyCertification(uint256 _certId) external view returns (bool valid, string memory certType) {
+        Certification memory cert = certifications[_certId];
+        // expiresAt == 0 means the certification never expires
+        valid = !cert.revoked && (cert.expiresAt == 0 || cert.expiresAt > block.timestamp);
+        certType = cert.certType;
+    }
+
+    function addAuthorizedIssuer(address _issuer) external onlyOwner {
+        authorizedIssuers[_issuer] = true;
+    }
+
+    function getHolderCertifications(address _holder) external view returns (uint256[] memory) {
+        return holderCerts[_holder];
+    }
+}''',
+        },
+    }
+
+    # Business Onboarding Guides
+    BUSINESS_ONBOARDING = {
+        "getting_started": {
+            "title": "Getting Started with Blockchain for Your Business",
+            "steps": [
+                "1. **Understand the Value**: Blockchain on Base L2 provides transparent, immutable records at very low cost (< $0.01 per transaction)",
+                "2. **Set Up a Wallet**: Create a business wallet using MetaMask or Coinbase Wallet - this is your on-chain identity",
+                "3. **Get Test ETH**: Start on Base Sepolia testnet to experiment without spending real funds",
+                "4. **Choose Your Use Case**: Select from product tracking, supplier management, invoicing, or certifications",
+                "5. **Deploy Your First Contract**: Use the CIS Assistant to generate and deploy your first smart contract",
+                "6. **Integrate with Your Workflow**: Connect blockchain records to your existing business processes",
+            ],
+        },
+        "cost_analysis": {
+            "title": "Cost Analysis: Base L2 for Small Businesses",
+            "details": [
+                "**Transaction Costs**: < $0.01 per transaction on Base (vs $5-50 on Ethereum mainnet)",
+                "**Contract Deployment**: Typically $0.10-$1.00 on Base (vs $50-500 on Ethereum mainnet)",
+                "**Monthly Operating Costs**: Estimated $5-$50/month for typical small business usage",
+                "**Comparison**: Traditional supply chain software costs $200-$2000/month",
+                "**No Subscription Fees**: Smart contracts run without ongoing platform fees",
+                "**Pay-per-Use Model**: Only pay gas for transactions you actually make",
+            ],
+        },
+        "use_case_guide": {
+            "title": "Supply Chain Use Cases for Small Businesses",
+            "use_cases": {
+                "retail": {
+                    "description": "Track inventory, verify product authenticity, manage supplier relationships",
+                    "recommended_contracts": ["product_tracking", "supplier_registry"],
+                    "estimated_setup_time": "1-2 weeks",
+                },
+                "food_beverage": {
+                    "description": "Farm-to-table traceability, temperature logging, organic certification verification",
+                    "recommended_contracts": ["product_tracking", "certification_nft"],
+                    "estimated_setup_time": "2-3 weeks",
+                },
+                "manufacturing": {
+                    "description": "Parts tracking, quality control records, supplier qualification management",
+                    "recommended_contracts": ["product_tracking", "supplier_registry", "certification_nft"],
+                    "estimated_setup_time": "3-4 weeks",
+                },
+                "services": {
+                    "description": "Invoice management, service delivery verification, credential tracking",
+                    "recommended_contracts": ["invoice_management", "certification_nft"],
+                    "estimated_setup_time": "1-2 weeks",
+                },
+                "wholesale_distribution": {
+                    "description": "Bulk shipment tracking, B2B payments, vendor management",
+                    "recommended_contracts": ["product_tracking", "invoice_management", "supplier_registry"],
+                    "estimated_setup_time": "2-3 weeks",
+                },
+            },
+        },
+        "integration_guide": {
+            "title": "Integrating Blockchain with Existing Business Systems",
+            "steps": [
+                "1. **Identify Data Points**: Determine which business events should be recorded on-chain",
+                "2. **Choose Integration Method**: REST API wrapper, webhook triggers, or direct Web3 integration",
+                "3. **Set Up Event Listeners**: Monitor blockchain events to update your existing systems",
+                "4. **Implement Gradual Migration**: Start with one process (e.g., invoicing) before expanding",
+                "5. **Train Your Team**: Ensure staff understand wallet management and basic blockchain concepts",
+                "6. **Monitor and Optimize**: Use Base block explorer to monitor transactions and optimize gas usage",
+            ],
+            "recommended_tools": [
+                "**Web3.py / ethers.js**: Libraries for interacting with Base from your applications",
+                "**Hardhat / Foundry**: Development frameworks for deploying and testing smart contracts",
+                "**The Graph**: Indexing protocol for querying blockchain data efficiently",
+                "**OpenZeppelin**: Audited smart contract libraries for secure development",
+                "**Alchemy / Infura**: Node providers for reliable Base L2 connectivity",
+            ],
+        },
+    }
+
     def __init__(self):
         self.server = Server("cis-assistant")
         self.contracts: Dict[str, Any] = {}
         self.error_patterns: Dict[str, List[Dict[str, Any]]] = {}
         self.examples: List[Dict[str, Any]] = []
         self.bible_content: str = self._load_bible_content()
-        
+
         # Register handlers
         self._setup_handlers()
     
@@ -541,6 +1038,87 @@ class CISAssistantServer:
                         "required": ["code", "component_description"]
                     }
                 ),
+                Tool(
+                    name="get_base_network_info",
+                    description="Get Base L2 network configuration, endpoints, and details for blockchain development on the Base platform",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "network": {
+                                "type": "string",
+                                "description": "Network to get info for: mainnet or sepolia (testnet)",
+                                "enum": ["mainnet", "sepolia"]
+                            }
+                        },
+                        "required": []
+                    }
+                ),
+                Tool(
+                    name="generate_supply_chain_contract",
+                    description="Generate a Solidity smart contract template for supply chain use cases on Base L2, including product tracking, supplier registry, invoice management, and certification NFTs",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "template_type": {
+                                "type": "string",
+                                "description": "Type of supply chain contract to generate",
+                                "enum": ["product_tracking", "supplier_registry", "invoice_management", "certification_nft"]
+                            },
+                            "business_name": {
+                                "type": "string",
+                                "description": "Optional name of the business for reference; not automatically injected into the generated contract source"
+                            }
+                        },
+                        "required": ["template_type"]
+                    }
+                ),
+                Tool(
+                    name="get_supply_chain_templates",
+                    description="List all available supply chain smart contract templates with descriptions and use cases for Base L2 blockchain",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {}
+                    }
+                ),
+                Tool(
+                    name="get_business_onboarding_guide",
+                    description="Get step-by-step guidance for small businesses to adopt blockchain technology on Base L2 for supply chain management",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "guide_section": {
+                                "type": "string",
+                                "description": "Section of the onboarding guide to retrieve",
+                                "enum": ["getting_started", "cost_analysis", "use_case_guide", "integration_guide"]
+                            },
+                            "business_type": {
+                                "type": "string",
+                                "description": "Optional business type for tailored recommendations: retail, food_beverage, manufacturing, services, wholesale_distribution",
+                                "enum": ["retail", "food_beverage", "manufacturing", "services", "wholesale_distribution"]
+                            }
+                        },
+                        "required": []
+                    }
+                ),
+                Tool(
+                    name="validate_smart_contract",
+                    description="Validate Solidity smart contract code for common issues, security patterns, and Base L2 compatibility",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "Solidity smart contract code to validate"
+                            },
+                            "contract_type": {
+                                "type": "string",
+                                "description": "Optional type of contract for context-aware validation",
+                                "enum": ["product_tracking", "supplier_registry", "invoice_management", "certification_nft", "custom"]
+                            }
+                        },
+                        "required": ["code"]
+                    }
+                ),
             ]
 
         @self.server.call_tool()
@@ -571,6 +1149,16 @@ class CISAssistantServer:
                 return await self._get_bible_section(arguments)
             elif name == "check_cis_compliance":
                 return await self._check_cis_compliance(arguments)
+            elif name == "get_base_network_info":
+                return await self._get_base_network_info(arguments)
+            elif name == "generate_supply_chain_contract":
+                return await self._generate_supply_chain_contract(arguments)
+            elif name == "get_supply_chain_templates":
+                return await self._get_supply_chain_templates(arguments)
+            elif name == "get_business_onboarding_guide":
+                return await self._get_business_onboarding_guide(arguments)
+            elif name == "validate_smart_contract":
+                return await self._validate_smart_contract(arguments)
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -615,6 +1203,28 @@ class CISAssistantServer:
                     name="llm_coding_best_practices",
                     description="Best practices for LLM-assisted code generation to avoid common issues",
                     arguments=[]
+                ),
+                Prompt(
+                    name="blockchain_supply_chain_setup",
+                    description="Step-by-step workflow for setting up supply chain tracking on Base L2 blockchain",
+                    arguments=[
+                        PromptArgument(
+                            name="business_type",
+                            description="Type of business: retail, food_beverage, manufacturing, services, wholesale_distribution",
+                            required=False
+                        )
+                    ]
+                ),
+                Prompt(
+                    name="small_business_onboarding",
+                    description="Complete guide for small businesses to adopt blockchain technology on Base L2 for supply chain and business operations",
+                    arguments=[
+                        PromptArgument(
+                            name="focus_area",
+                            description="Area to focus on: getting_started, cost_analysis, integration, all",
+                            required=False
+                        )
+                    ]
                 ),
             ]
 
@@ -856,6 +1466,153 @@ Use these CIS Assistant tools to maintain methodology adherence:
 ## Tools Available
 
 Use `get_llm_coding_aid` with a specific issue type for detailed guidance on any of these issues."""
+                            )
+                        )
+                    ]
+                )
+            elif name == "blockchain_supply_chain_setup":
+                business_type = arguments.get("business_type", "general") if arguments else "general"
+                return GetPromptResult(
+                    description=f"Blockchain supply chain setup workflow for {business_type} business",
+                    messages=[
+                        PromptMessage(
+                            role="user",
+                            content=TextContent(
+                                type="text",
+                                text=f"""# Blockchain Supply Chain Setup on Base L2
+
+## Business Type: {business_type.replace('_', ' ').title()}
+
+## Step 1: Choose Your Network
+Start with **Base Sepolia testnet** for development and testing.
+Use `get_base_network_info` to get network configuration details.
+
+- Testnet: Chain ID 84532, RPC: https://sepolia.base.org
+- Mainnet: Chain ID 8453, RPC: https://mainnet.base.org
+
+## Step 2: Select Supply Chain Contracts
+Use `get_supply_chain_templates` to browse available contract templates:
+- **Product Tracking**: Track goods through supply chain stages
+- **Supplier Registry**: Build a verified supplier network
+- **Invoice Management**: On-chain B2B payment tracking
+- **Certification NFT**: Issue verifiable certifications
+
+## Step 3: Generate Your Smart Contract
+Use `generate_supply_chain_contract` to create a customized contract:
+- Select the template that matches your use case
+- Review the generated Solidity code
+- Customize fields and logic for your business needs
+
+## Step 4: Validate Your Contract
+Use `validate_smart_contract` to check for:
+- Security best practices
+- Gas optimization opportunities
+- Base L2 compatibility
+- Common vulnerability patterns
+
+## Step 5: Deploy to Testnet
+1. Set up a development environment (Hardhat or Foundry recommended)
+2. Configure for Base Sepolia testnet
+3. Deploy and test all contract functions
+4. Verify contract on BaseScan
+
+## Step 6: Integration
+Use `get_business_onboarding_guide(guide_section="integration_guide")` for:
+- Connecting to existing business systems
+- Setting up event listeners
+- Building user interfaces
+
+## Step 7: Go Live on Base Mainnet
+1. Complete testing on Sepolia
+2. Audit smart contract code
+3. Deploy to Base mainnet
+4. Monitor transactions on BaseScan
+
+## Available Tools
+- `get_base_network_info` - Network configuration
+- `generate_supply_chain_contract` - Contract generation
+- `get_supply_chain_templates` - Browse templates
+- `validate_smart_contract` - Contract validation
+- `get_business_onboarding_guide` - Business adoption guides
+- `check_cis_compliance` - CIS methodology compliance"""
+                            )
+                        )
+                    ]
+                )
+            elif name == "small_business_onboarding":
+                focus_area = arguments.get("focus_area", "all") if arguments else "all"
+                return GetPromptResult(
+                    description=f"Small business blockchain onboarding guide - {focus_area}",
+                    messages=[
+                        PromptMessage(
+                            role="user",
+                            content=TextContent(
+                                type="text",
+                                text=f"""# Small Business Blockchain Onboarding Guide
+
+## Focus: {focus_area.replace('_', ' ').title()}
+
+## Why Base L2 for Small Businesses?
+
+Base is an Ethereum Layer 2 network that makes blockchain accessible and affordable:
+- **Ultra-low costs**: Transactions cost less than $0.01
+- **Fast confirmations**: ~2 second block times
+- **Ethereum security**: Secured by Ethereum's network
+- **Growing ecosystem**: Access to DeFi, NFTs, and business tools
+- **No platform fees**: Pay only for transactions you make
+
+## Getting Started
+
+### 1. Set Up Your Business Wallet
+- Install MetaMask or Coinbase Wallet
+- Create a dedicated business wallet
+- Secure your seed phrase safely
+- Add Base network to your wallet
+
+### 2. Understand the Costs
+Use `get_business_onboarding_guide(guide_section="cost_analysis")` to see:
+- Per-transaction costs (< $0.01)
+- Contract deployment costs ($0.10-$1.00)
+- Monthly operating estimates ($5-$50)
+- Comparison with traditional software ($200-$2000/month)
+
+### 3. Choose Your Use Case
+Use `get_business_onboarding_guide(guide_section="use_case_guide")` to find the right fit:
+- **Retail**: Inventory tracking, product authenticity
+- **Food & Beverage**: Farm-to-table traceability, certifications
+- **Manufacturing**: Parts tracking, quality control
+- **Services**: Invoice management, credential verification
+- **Wholesale/Distribution**: Shipment tracking, B2B payments
+
+### 4. Deploy Your First Contract
+Use `generate_supply_chain_contract` to create a smart contract:
+- Start with the template that matches your needs
+- Test on Base Sepolia testnet first
+- Deploy to mainnet when ready
+
+### 5. Integrate with Your Business
+Use `get_business_onboarding_guide(guide_section="integration_guide")` for:
+- Connecting blockchain to your existing systems
+- Recommended development tools
+- Staff training resources
+
+## Key Benefits for Small Businesses
+
+1. **Transparency**: Every transaction is verifiable and permanent
+2. **Trust**: Build reputation through on-chain track record
+3. **Efficiency**: Automate payments, certifications, and tracking
+4. **Access**: Connect with global supply chains and marketplaces
+5. **Cost Savings**: Eliminate intermediary fees and reduce paperwork
+6. **Growth**: Access new markets and business opportunities
+
+## Available Tools
+
+- `get_base_network_info` - Learn about Base L2 network
+- `get_supply_chain_templates` - Browse available contract templates
+- `generate_supply_chain_contract` - Generate customized contracts
+- `validate_smart_contract` - Validate contract security
+- `get_business_onboarding_guide` - Detailed adoption guides
+- `get_cis_principles` - CIS methodology for robust design"""
                             )
                         )
                     ]
@@ -1557,6 +2314,505 @@ Use `get_bible_section(section="<name>")` to access other sections."""
 3. Re-run `check_cis_compliance` after making changes
 4. Use `get_llm_coding_aid` if you encounter implementation issues"""
         
+        return [TextContent(type="text", text=result)]
+
+    async def _get_base_network_info(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Get Base L2 network configuration and details"""
+        network = arguments.get("network")
+
+        if network:
+            if network not in self.BASE_NETWORK_CONFIG:
+                return [TextContent(
+                    type="text",
+                    text=f"Error: Unknown network '{network}'. Available: {', '.join(self.BASE_NETWORK_CONFIG.keys())}"
+                )]
+
+            config = self.BASE_NETWORK_CONFIG[network]
+            result = f"""# Base Network: {config['name']}
+
+## Network Details
+
+| Property | Value |
+|----------|-------|
+| **Chain ID** | {config['chain_id']} |
+| **RPC URL** | {config['rpc_url']} |
+| **Block Explorer** | {config['block_explorer']} |
+| **Bridge** | {config['bridge']} |
+| **Currency** | {config['currency']} |
+| **Layer** | {config['layer']} |
+| **Avg Block Time** | {config['avg_block_time']} |
+| **Avg Gas Cost** | {config['avg_gas_cost']} |
+
+## Description
+{config['description']}
+
+## Quick Setup
+
+### Add to MetaMask/Wallet
+```
+Network Name: {config['name']}
+RPC URL: {config['rpc_url']}
+Chain ID: {config['chain_id']}
+Currency Symbol: ETH
+Block Explorer: {config['block_explorer']}
+```
+
+### Hardhat Configuration
+```javascript
+networks: {{
+  base{'' if network == 'mainnet' else '-sepolia'}: {{
+    url: "{config['rpc_url']}",
+    chainId: {config['chain_id']},
+    accounts: [process.env.PRIVATE_KEY]
+  }}
+}}
+```
+
+## Next Steps
+- Use `generate_supply_chain_contract` to create smart contracts for Base
+- Use `get_business_onboarding_guide` for adoption guidance
+- Use `get_supply_chain_templates` to browse available templates"""
+        else:
+            networks_info = []
+            for net_name, config in self.BASE_NETWORK_CONFIG.items():
+                networks_info.append(f"""
+### {config['name']}
+- **Chain ID:** {config['chain_id']}
+- **RPC URL:** {config['rpc_url']}
+- **Block Explorer:** {config['block_explorer']}
+- **Avg Gas Cost:** {config['avg_gas_cost']}
+- {config['description']}
+""")
+
+            result = f"""# Base L2 Network Information
+
+Base is a secure, low-cost, builder-friendly Ethereum L2 built to bring the next billion users onchain.
+
+## Available Networks
+
+{chr(10).join(networks_info)}
+
+## Why Base for Supply Chain?
+
+1. **Ultra-low transaction costs** (< $0.01) make per-item tracking economically viable
+2. **Fast confirmations** (~2s) enable real-time supply chain updates
+3. **Ethereum security** provides enterprise-grade trust and reliability
+4. **Growing ecosystem** with DeFi, NFTs, and business tooling
+5. **No platform fees** — only pay gas for transactions you make
+
+## Usage
+
+Get detailed info for a specific network:
+```
+get_base_network_info(network="mainnet")
+get_base_network_info(network="sepolia")
+```"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _generate_supply_chain_contract(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Generate a supply chain smart contract template"""
+        template_type = arguments["template_type"]
+        business_name = arguments.get("business_name", "MyBusiness")
+
+        if template_type not in self.SUPPLY_CHAIN_TEMPLATES:
+            return [TextContent(
+                type="text",
+                text=f"Error: Unknown template type '{template_type}'. Available: {', '.join(self.SUPPLY_CHAIN_TEMPLATES.keys())}"
+            )]
+
+        template = self.SUPPLY_CHAIN_TEMPLATES[template_type]
+
+        result = f"""# Supply Chain Smart Contract: {template['name']}
+
+**Template:** {template_type}
+**Business:** {business_name}
+**Platform:** Base L2 (Ethereum Layer 2)
+**Description:** {template['description']}
+
+## Use Cases
+{chr(10).join(f'- {uc}' for uc in template['use_cases'])}
+
+## Solidity Contract
+
+```solidity
+{template['solidity_template']}
+```
+
+## Deployment Guide
+
+### Prerequisites
+- Node.js 18+ and npm
+- A wallet with ETH on Base (testnet or mainnet)
+- Hardhat or Foundry development framework
+
+### Deploy with Hardhat
+```bash
+# Install dependencies
+npm install hardhat @nomicfoundation/hardhat-toolbox
+
+# Compile contract
+npx hardhat compile
+
+# Deploy to Base Sepolia testnet
+npx hardhat run scripts/deploy.js --network base-sepolia
+
+# Deploy to Base mainnet
+npx hardhat run scripts/deploy.js --network base
+```
+
+### Verify on BaseScan
+```bash
+npx hardhat verify --network base-sepolia <CONTRACT_ADDRESS>
+```
+
+## Customization Tips
+1. Modify struct fields to match your specific data requirements
+2. Add access control for multi-role supply chains
+3. Implement batch operations for high-volume use cases
+4. Add off-chain data references (IPFS hashes) for detailed records
+5. Consider upgradeable proxy patterns for future modifications
+
+## Next Steps
+1. Review and customize the contract for your needs
+2. Use `validate_smart_contract` to check for issues
+3. Deploy to Base Sepolia testnet for testing
+4. Use `get_business_onboarding_guide` for integration guidance
+5. Deploy to Base mainnet when ready"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _get_supply_chain_templates(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """List all available supply chain templates"""
+        templates_list = []
+        for key, template in self.SUPPLY_CHAIN_TEMPLATES.items():
+            use_cases = "\n".join(f"  - {uc}" for uc in template["use_cases"])
+            templates_list.append(f"""
+### {template['name']} (`{key}`)
+**Description:** {template['description']}
+**Use Cases:**
+{use_cases}
+""")
+
+        result = f"""# Supply Chain Smart Contract Templates
+
+**Platform:** Base L2 (Ethereum Layer 2)
+**Total Templates:** {len(self.SUPPLY_CHAIN_TEMPLATES)}
+
+These templates are production-ready Solidity smart contracts designed for
+supply chain management on Base L2, optimized for low gas costs and
+small business accessibility.
+
+{chr(10).join(templates_list)}
+
+## How to Use
+
+1. Browse the templates above to find your match
+2. Generate a contract: `generate_supply_chain_contract(template_type="product_tracking")`
+3. Validate the code: `validate_smart_contract(code="...")`
+4. Follow the deployment guide in the generated output
+
+## Custom Contracts
+
+Need something different? Use the templates as starting points and:
+- Combine features from multiple templates
+- Add custom business logic
+- Use `check_cis_compliance` to ensure robust design
+- Use `validate_smart_contract` for security checks"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _get_business_onboarding_guide(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Get business onboarding guide for blockchain adoption"""
+        guide_section = arguments.get("guide_section")
+        business_type = arguments.get("business_type")
+
+        if guide_section and guide_section in self.BUSINESS_ONBOARDING:
+            guide = self.BUSINESS_ONBOARDING[guide_section]
+
+            if guide_section == "use_case_guide" and business_type:
+                use_cases = guide.get("use_cases", {})
+                if business_type in use_cases:
+                    uc = use_cases[business_type]
+                    contracts_list = ", ".join(f"`{c}`" for c in uc["recommended_contracts"])
+                    result = f"""# Supply Chain Guide: {business_type.replace('_', ' ').title()} Business
+
+## Overview
+{uc['description']}
+
+## Recommended Smart Contracts
+{contracts_list}
+
+## Estimated Setup Time
+{uc['estimated_setup_time']}
+
+## Getting Started
+1. Generate your contracts: Use `generate_supply_chain_contract` for each recommended template
+2. Test on Base Sepolia testnet
+3. Integrate with your existing systems
+4. Deploy to Base mainnet
+
+## Next Steps
+- Use `get_base_network_info` for network details
+- Use `get_business_onboarding_guide(guide_section="integration_guide")` for integration help
+- Use `get_business_onboarding_guide(guide_section="cost_analysis")` for cost details"""
+                else:
+                    available = ", ".join(use_cases.keys())
+                    result = f"Error: Unknown business type '{business_type}'. Available: {available}"
+            elif guide_section == "use_case_guide":
+                use_cases_list = []
+                for btype, uc in guide.get("use_cases", {}).items():
+                    contracts_str = ", ".join(f"`{c}`" for c in uc["recommended_contracts"])
+                    use_cases_list.append(f"""
+### {btype.replace('_', ' ').title()}
+**Description:** {uc['description']}
+**Recommended Contracts:** {contracts_str}
+**Setup Time:** {uc['estimated_setup_time']}
+""")
+                result = f"""# {guide['title']}
+
+{chr(10).join(use_cases_list)}
+
+## Get Tailored Guidance
+Use `get_business_onboarding_guide(guide_section="use_case_guide", business_type="retail")` for specific recommendations."""
+            elif guide_section == "integration_guide":
+                steps = "\n".join(guide["steps"])
+                tools = "\n".join(f"- {t}" for t in guide["recommended_tools"])
+                result = f"""# {guide['title']}
+
+## Integration Steps
+{steps}
+
+## Recommended Tools
+{tools}
+
+## Next Steps
+- Use `generate_supply_chain_contract` to create your contracts
+- Use `get_base_network_info` for network configuration
+- Use `validate_smart_contract` to verify contract security"""
+            else:
+                items = guide.get("steps", guide.get("details", []))
+                items_str = "\n".join(items)
+                result = f"""# {guide['title']}
+
+{items_str}
+
+## Related Guides
+- `get_business_onboarding_guide(guide_section="getting_started")` - Setup steps
+- `get_business_onboarding_guide(guide_section="cost_analysis")` - Cost breakdown
+- `get_business_onboarding_guide(guide_section="use_case_guide")` - Use case recommendations
+- `get_business_onboarding_guide(guide_section="integration_guide")` - Integration help"""
+        else:
+            sections_list = []
+            for key, guide in self.BUSINESS_ONBOARDING.items():
+                sections_list.append(f"- **{key}**: {guide['title']}")
+
+            result = f"""# Small Business Blockchain Onboarding
+
+## Available Guide Sections
+
+{chr(10).join(sections_list)}
+
+## Quick Start
+
+1. Start with `get_business_onboarding_guide(guide_section="getting_started")`
+2. Review costs: `get_business_onboarding_guide(guide_section="cost_analysis")`
+3. Find your use case: `get_business_onboarding_guide(guide_section="use_case_guide")`
+4. Plan integration: `get_business_onboarding_guide(guide_section="integration_guide")`
+
+## Why Blockchain on Base L2?
+
+- **Ultra-low costs**: < $0.01 per transaction
+- **Fast**: ~2 second confirmations
+- **Secure**: Built on Ethereum
+- **Accessible**: No monthly subscriptions or platform fees"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _validate_smart_contract(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Validate Solidity smart contract code"""
+        code = arguments["code"]
+        contract_type = arguments.get("contract_type", "custom")
+
+        issues = []
+        recommendations = []
+        code_lower = code.lower()
+
+        # Check for SPDX license identifier
+        if "spdx-license-identifier" not in code_lower:
+            issues.append({
+                "severity": "medium",
+                "type": "missing_license",
+                "message": "Missing SPDX license identifier",
+                "fix": "Add '// SPDX-License-Identifier: MIT' at the top of the file",
+            })
+
+        # Check for pragma solidity version
+        pragma_match = re.search(r'pragma\s+solidity\s+[\^~>=<]*\s*(\d+)\.(\d+)(?:\.(\d+))?', code)
+        if not pragma_match:
+            issues.append({
+                "severity": "high",
+                "type": "missing_pragma",
+                "message": "Missing or invalid Solidity pragma version",
+                "fix": "Add 'pragma solidity ^0.8.19;' at the top of the file",
+            })
+        else:
+            major = int(pragma_match.group(1))
+            minor = int(pragma_match.group(2))
+            version_str = f"{major}.{minor}" + (f".{pragma_match.group(3)}" if pragma_match.group(3) else "")
+            if major == 0 and minor < 8:
+                issues.append({
+                    "severity": "high",
+                    "type": "old_solidity_version",
+                    "message": f"Solidity version {version_str} is outdated; use 0.8.x+ for built-in overflow protection",
+                    "fix": "Update pragma to 'pragma solidity ^0.8.19;' for safety features",
+                })
+
+        # Check for reentrancy patterns
+        if re.search(r'\.call\s*\{', code) or ".call{" in code:
+            if "reentrancyguard" not in code_lower and "nonreentrant" not in code_lower:
+                # Check if state changes happen after external call within the same function
+                call_match = re.search(r'\.call\s*\{', code)
+                if call_match:
+                    call_pos = call_match.start()
+                    # Scope to the next closing brace of the function (approximation)
+                    next_func = code.find("function ", call_pos + 1)
+                    scope_end = next_func if next_func != -1 else len(code)
+                    after_call = code[call_pos:scope_end]
+                    # Look for state-changing assignments (exclude local variable declarations)
+                    if re.search(r'\b\w+\[\w+\]\s*[.=]|\b\w+\.\w+\s*=', after_call):
+                        issues.append({
+                            "severity": "critical",
+                            "type": "potential_reentrancy",
+                            "message": "Potential reentrancy vulnerability: state changes after external call",
+                            "fix": "Use checks-effects-interactions pattern or OpenZeppelin ReentrancyGuard",
+                        })
+
+        # Check for unchecked return values on transfers
+        if ".transfer(" in code:
+            recommendations.append("Consider using .call{value: amount}('') instead of .transfer() for future compatibility")
+
+        # Check for access control
+        # Look for concrete authorization patterns rather than generic modifiers
+        access_patterns = [
+            "onlyowner",          # OpenZeppelin Ownable-style modifier
+            "onlyrole",           # OpenZeppelin AccessControl-style modifier
+            "hasrole(",           # AccessControl role checks
+            "accesscontrol",      # Inheritance from AccessControl
+            "ownable",            # Inheritance from Ownable
+        ]
+        # Explicit require checks on msg.sender, e.g. require(msg.sender == owner)
+        has_sender_require = bool(re.search(r'require\s*\(\s*msg\.sender\s*==', code_lower))
+        has_access_control = has_sender_require or any(p in code_lower for p in access_patterns)
+        has_function_declarations = bool(re.search(r'\bfunction\s+\w+\s*\(', code))
+        if not has_access_control and has_function_declarations:
+            issues.append({
+                "severity": "high",
+                "type": "missing_access_control",
+                "message": "No access control patterns detected",
+                "fix": "Add modifiers (onlyOwner, role-based) or require checks (e.g., require(msg.sender == owner)) to restrict sensitive functions",
+            })
+
+        # Check for events
+        if "event " not in code:
+            issues.append({
+                "severity": "medium",
+                "type": "missing_events",
+                "message": "No events defined for state changes",
+                "fix": "Add events for important state changes to enable off-chain monitoring",
+            })
+        elif "emit " not in code:
+            issues.append({
+                "severity": "medium",
+                "type": "events_not_emitted",
+                "message": "Events defined but never emitted",
+                "fix": "Emit events in functions that change state",
+            })
+
+        # Check for input validation
+        has_require = re.search(r'\brequire\s*\(', code)
+        has_revert = re.search(r'\brevert\s*\(', code)
+        if not has_require and not has_revert:
+            issues.append({
+                "severity": "high",
+                "type": "missing_input_validation",
+                "message": "No input validation (require/revert) statements found",
+                "fix": "Add require() statements to validate function inputs",
+            })
+
+        # Check for address(0) checks
+        if "address" in code_lower and "address(0)" not in code:
+            if re.search(r'\baddress\s+_\w+', code):
+                recommendations.append("Consider adding address(0) checks for address parameters")
+
+        # Base L2 specific recommendations
+        recommendations.append("Base L2 has low gas costs — consider adding more detailed event data for better off-chain indexing")
+
+        if "mapping" in code:
+            recommendations.append("For large mappings on Base, consider pagination patterns for gas-efficient reads")
+
+        # Supply chain specific checks
+        if contract_type in ["product_tracking", "supplier_registry"]:
+            if "timestamp" not in code_lower and "block.timestamp" not in code:
+                recommendations.append("Supply chain contracts benefit from timestamp tracking for audit trails")
+
+        # Calculate validation score
+        critical_count = sum(1 for i in issues if i["severity"] == "critical")
+        high_count = sum(1 for i in issues if i["severity"] == "high")
+        medium_count = sum(1 for i in issues if i["severity"] == "medium")
+        low_count = sum(1 for i in issues if i["severity"] == "low")
+
+        total_issues = len(issues)
+        if total_issues == 0:
+            score = 100
+        else:
+            score = max(0, 100 - (critical_count * 30) - (high_count * 15) - (medium_count * 5) - (low_count * 2))
+
+        # Format issues
+        severity_emoji = {
+            "critical": "🔴",
+            "high": "🟠",
+            "medium": "🟡",
+            "low": "🟢",
+        }
+
+        issues_output = []
+        for issue in sorted(issues, key=lambda x: ["critical", "high", "medium", "low"].index(x["severity"])):
+            emoji = severity_emoji.get(issue["severity"], "⚪")
+            issues_output.append(f"""
+### {emoji} {issue['type']} ({issue['severity']})
+**Issue:** {issue['message']}
+**Fix:** {issue['fix']}
+""")
+
+        recs_output = "\n".join(f"- {r}" for r in recommendations) if recommendations else "No additional recommendations."
+
+        passed = total_issues == 0
+        status = "✅ PASSED" if passed else "⚠️ ISSUES FOUND"
+
+        result = f"""# Smart Contract Validation: {status}
+
+## Validation Score: {score}/100
+
+**Contract Type:** {contract_type}
+**Platform:** Base L2
+**Issues Found:** {total_issues} ({critical_count} critical, {high_count} high, {medium_count} medium, {low_count} low)
+
+## Issues
+
+{chr(10).join(issues_output) if issues_output else "No issues found! Contract follows best practices."}
+
+## Recommendations
+
+{recs_output}
+
+## Next Steps
+
+1. {"Address critical and high severity issues before deployment" if not passed else "Contract is ready for testing"}
+2. Deploy to Base Sepolia testnet for functional testing
+3. Consider a professional audit for production contracts
+4. Use `get_base_network_info` for deployment configuration"""
+
         return [TextContent(type="text", text=result)]
 
     # Helper methods

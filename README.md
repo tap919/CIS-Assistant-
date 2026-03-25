@@ -1,6 +1,6 @@
 # CIS Assistant MCP Server
 
-A Model Context Protocol (MCP) server that provides intelligent code development assistance using the Circulatory Informatics System (CIS) methodology.
+A Model Context Protocol (MCP) server that provides intelligent code development assistance using the Circulatory Informatics System (CIS) methodology, enhanced with blockchain automation for the Base layer 2 platform — bridging supply chain management, blockchain technology, and small business adoption.
 
 ## Overview
 
@@ -13,6 +13,10 @@ CIS Assistant is an MCP server that enables AI applications (like Claude) to:
 - **Access the Circulatory Informatics Bible for methodology adherence**
 - **Get guidance on common LLM coding issues**
 - **Check code for CIS principle compliance**
+- **Automate blockchain development on Base L2**
+- **Generate supply chain smart contracts (Solidity)**
+- **Onboard small businesses to blockchain technology**
+- **Validate smart contracts for security and best practices**
 
 ## Features
 
@@ -50,6 +54,23 @@ CIS Assistant is an MCP server that enables AI applications (like Claude) to:
 - Validate code against CIS principles
 - Get recommendations for improvement
 - Compliance scoring
+
+### ⛓️ Base L2 Blockchain Automation
+- Base mainnet and Sepolia testnet configuration
+- Network details, RPC endpoints, and deployment guides
+- Gas cost estimates and optimization tips
+
+### 📦 Supply Chain Smart Contracts
+- Product tracking with provenance verification
+- Supplier registry with reputation system
+- Invoice management with on-chain payments
+- Certification NFTs for compliance verification
+
+### 🏪 Small Business Onboarding
+- Step-by-step blockchain adoption guides
+- Cost analysis (< $0.01 per transaction on Base)
+- Industry-specific use case recommendations
+- Integration guides for existing business systems
 
 ## Installation
 
@@ -243,6 +264,67 @@ Check if code or design adheres to CIS principles and get recommendations for im
 }
 ```
 
+### 13. get_base_network_info
+Get Base L2 network configuration, endpoints, and details for blockchain development.
+
+**Parameters:**
+- `network` (optional): Network to query — `mainnet` or `sepolia`
+
+**Example:**
+```json
+{
+  "network": "mainnet"
+}
+```
+
+### 14. generate_supply_chain_contract
+Generate a Solidity smart contract template for supply chain use cases on Base L2.
+
+**Parameters:**
+- `template_type`: Type of contract — `product_tracking`, `supplier_registry`, `invoice_management`, `certification_nft`
+- `business_name` (optional): Name of the business
+
+**Example:**
+```json
+{
+  "template_type": "product_tracking",
+  "business_name": "FreshFarm Foods"
+}
+```
+
+### 15. get_supply_chain_templates
+List all available supply chain smart contract templates with descriptions and use cases.
+
+### 16. get_business_onboarding_guide
+Get step-by-step guidance for small businesses to adopt blockchain technology on Base L2.
+
+**Parameters:**
+- `guide_section` (optional): Section — `getting_started`, `cost_analysis`, `use_case_guide`, `integration_guide`
+- `business_type` (optional): Business type for tailored recommendations — `retail`, `food_beverage`, `manufacturing`, `services`, `wholesale_distribution`
+
+**Example:**
+```json
+{
+  "guide_section": "use_case_guide",
+  "business_type": "retail"
+}
+```
+
+### 17. validate_smart_contract
+Validate Solidity smart contract code for security patterns, common issues, and Base L2 compatibility.
+
+**Parameters:**
+- `code`: Solidity smart contract code to validate
+- `contract_type` (optional): Type for context-aware validation — `product_tracking`, `supplier_registry`, `invoice_management`, `certification_nft`, `custom`
+
+**Example:**
+```json
+{
+  "code": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.19;\ncontract Test { ... }",
+  "contract_type": "product_tracking"
+}
+```
+
 ## Available Prompts
 
 ### 1. contract_first_development
@@ -267,6 +349,22 @@ Guide for implementing code following Circulatory Informatics System principles.
 Best practices for LLM-assisted code generation to avoid common issues.
 
 **Usage:** Provides a comprehensive guide to common LLM coding issues and their solutions.
+
+### 5. blockchain_supply_chain_setup
+Step-by-step workflow for setting up supply chain tracking on Base L2 blockchain.
+
+**Arguments:**
+- `business_type` (optional): Type of business — `retail`, `food_beverage`, `manufacturing`, `services`, `wholesale_distribution`
+
+**Usage:** Guides you through choosing contracts, deploying to Base, and integrating with your business.
+
+### 6. small_business_onboarding
+Complete guide for small businesses to adopt blockchain technology on Base L2.
+
+**Arguments:**
+- `focus_area` (optional): Area to focus on — `getting_started`, `cost_analysis`, `integration`, `all`
+
+**Usage:** Comprehensive onboarding covering wallet setup, costs, use cases, and integration.
 
 ## Workflow Example
 
@@ -310,6 +408,8 @@ The CIS Assistant MCP server is built with:
 - **Contract-First Design**: Formal specifications before implementation
 - **Learning System**: Captures and reuses successful patterns
 - **Example Library**: Searchable collection of proven solutions
+- **Base L2 Blockchain**: Supply chain smart contract generation, validation, and deployment guidance
+- **Small Business Focus**: Onboarding guides, cost analysis, and industry-specific recommendations
 
 ## Development
 
@@ -356,10 +456,9 @@ For issues and questions:
 
 ## Background
 
-This MCP server is based on the CIS (Circulatory Informatics System) code scaffold methodology, which emphasizes:
-- Clear contracts before implementation
-- Validation-driven development
-- Learning from patterns
-- Iterative refinement
+This MCP server is based on the CIS (Circulatory Informatics System) code scaffold methodology, enhanced with blockchain automation for the Base layer 2 platform. It serves as a critical business tool bridging:
+- **Supply Chain Management**: Transparent, immutable tracking of goods and services
+- **Blockchain Technology**: Low-cost, fast transactions on Base L2 (Ethereum Layer 2)
+- **Small Business Adoption**: Making blockchain accessible and affordable for businesses of all sizes
 
-The approach ensures high-quality, maintainable code by establishing clear specifications and continuously learning from development patterns.
+The approach ensures high-quality, maintainable code by establishing clear specifications, continuously learning from development patterns, and providing production-ready smart contract templates for supply chain solutions.
