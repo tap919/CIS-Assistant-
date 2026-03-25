@@ -1066,7 +1066,7 @@ contract CertificationNFT {
                             },
                             "business_name": {
                                 "type": "string",
-                                "description": "Name of the business (used in contract comments)"
+                                "description": "Optional name of the business for reference; not automatically injected into the generated contract source"
                             }
                         },
                         "required": ["template_type"]
