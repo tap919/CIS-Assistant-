@@ -47,6 +47,11 @@ class CISAssistantServer:
     - Base L2 blockchain automation and network information
     - Supply chain smart contract generation and validation
     - Small business blockchain onboarding guidance
+    - Supplier intelligence: financial health, geopolitical risk, lead time variance, ESG scoring
+    - Multi-modal carrier visibility: normalized tracking schema across FedEx, UPS, Maersk, DHL
+    - Cross-ERP context bridge: field mapping between SAP, Oracle Fusion, NetSuite, Dynamics 365
+    - Continuous planning: rolling demand sensing, inventory optimization, constraint management, S&OP
+    - Sustainability: Scope 3 carbon calculation, modal comparison, carbon-aware routing
 
     Note: This implementation uses in-memory storage. All contracts, patterns,
     and examples will be lost when the server restarts. For production use,
@@ -664,12 +669,456 @@ contract CertificationNFT {
         },
     }
 
+    # ---------------------------------------------------------------------------
+    # Supplier Intelligence Data
+    # ---------------------------------------------------------------------------
+    SUPPLIER_RISK_FACTORS = {
+        "financial_health": {
+            "title": "Financial Health Indicators",
+            "signals": [
+                "Credit rating changes (Moody's, S&P, Fitch)",
+                "Debt-to-equity ratio trends",
+                "Days payable outstanding (DPO) drift",
+                "Cash flow from operations year-over-year",
+                "Revenue concentration risk (single customer >30%)",
+                "Accounts receivable aging",
+            ],
+            "risk_levels": {
+                "low": "Stable credit, healthy cash flow, diversified revenue",
+                "medium": "Minor credit watch, cash flow volatility, moderate concentration",
+                "high": "Credit downgrade, negative cash flow, >50% revenue concentration",
+                "critical": "Bankruptcy filing, payment defaults, business continuity risk",
+            },
+            "data_sources": ["Dun & Bradstreet", "Coface", "Everstream Analytics", "SEC filings"],
+        },
+        "geopolitical_exposure": {
+            "title": "Geopolitical & Country Risk",
+            "signals": [
+                "Country political stability index (World Bank)",
+                "Trade tariff and embargo exposure",
+                "Currency volatility (FX risk)",
+                "Natural disaster frequency (region risk score)",
+                "Labor unrest and strike history",
+                "Sanctions list monitoring (OFAC, EU, UN)",
+            ],
+            "risk_levels": {
+                "low": "OECD stable country, no sanctions exposure, minimal FX risk",
+                "medium": "Developing market, moderate tariff exposure, some FX volatility",
+                "high": "Politically unstable region, tariff escalation risk, high FX",
+                "critical": "Active conflict zone, sanctions risk, supply route disruption",
+            },
+            "data_sources": ["Riskmethods", "World Bank Governance Indicators", "OFAC", "Everstream"],
+        },
+        "lead_time_variance": {
+            "title": "Lead Time & Delivery Performance",
+            "signals": [
+                "On-time delivery rate (OTD%) rolling 90 days",
+                "Lead time mean and standard deviation",
+                "Expedite frequency (% of orders requiring rush)",
+                "Carrier transit time variance by lane",
+                "Port congestion index for origin/destination",
+                "Order fill rate and backorder rate",
+            ],
+            "risk_levels": {
+                "low": "OTD >95%, lead time variance <10%, no port congestion",
+                "medium": "OTD 85-95%, lead time variance 10-25%, minor port delays",
+                "high": "OTD 70-85%, lead time variance >25%, active port congestion",
+                "critical": "OTD <70%, chronic delays, supply stoppage risk",
+            },
+            "data_sources": ["ERP order history", "TMS carrier data", "Port authority APIs", "FourKites"],
+        },
+        "esg_scores": {
+            "title": "Environmental, Social & Governance (ESG)",
+            "signals": [
+                "Carbon emissions intensity (Scope 1, 2, 3)",
+                "Water usage and waste generation",
+                "Labor standards compliance (ILO conventions)",
+                "Diversity and inclusion metrics",
+                "Governance transparency score",
+                "Third-party ESG audit results (EcoVadis, CDP)",
+            ],
+            "risk_levels": {
+                "low": "EcoVadis Gold/Platinum, CDP A-list, certified labor standards",
+                "medium": "EcoVadis Silver, CDP B-list, minor labor compliance gaps",
+                "high": "EcoVadis Bronze, unverified emissions, labor concerns",
+                "critical": "No ESG program, regulatory violations, reputational risk",
+            },
+            "data_sources": ["EcoVadis", "CDP", "Sustainalytics", "MSCI ESG"],
+        },
+    }
+
+    # ---------------------------------------------------------------------------
+    # Multi-Modal Carrier Visibility Data
+    # ---------------------------------------------------------------------------
+    CARRIER_APIS = {
+        "fedex": {
+            "name": "FedEx",
+            "api_version": "v1",
+            "auth": "OAuth 2.0 (client_credentials)",
+            "base_url": "https://apis.fedex.com",
+            "key_endpoints": {
+                "tracking": "/track/v1/trackingnumbers",
+                "rates": "/rate/v1/rates/quotes",
+                "pickup": "/pickup/v1/pickups",
+                "ship": "/ship/v1/shipments",
+            },
+            "tracking_fields": ["trackingNumber", "status", "statusByLocale", "dateAndTimes",
+                                 "estimatedDeliveryTimeWindow", "packageDetails", "events"],
+            "modes": ["express", "ground", "freight", "international"],
+            "webhook_support": True,
+            "normalized_status_map": {
+                "OC": "order_created", "PU": "picked_up", "IT": "in_transit",
+                "OD": "out_for_delivery", "DL": "delivered", "DE": "exception",
+            },
+        },
+        "ups": {
+            "name": "UPS",
+            "api_version": "v1",
+            "auth": "OAuth 2.0 (client_credentials)",
+            "base_url": "https://onlinetools.ups.com/api",
+            "key_endpoints": {
+                "tracking": "/track/v1/details/{inquiryNumber}",
+                "rates": "/rating/v1/shop",
+                "pickup": "/pickupcreation/v2/pickup",
+                "ship": "/shipments/v1/ship",
+            },
+            "tracking_fields": ["trackingNumber", "currentStatus", "currentStatusDescription",
+                                 "scheduledDelivery", "deliveryDate", "activity"],
+            "modes": ["ground", "air", "international", "freight"],
+            "webhook_support": True,
+            "normalized_status_map": {
+                "M": "order_created", "P": "picked_up", "I": "in_transit",
+                "O": "out_for_delivery", "D": "delivered", "X": "exception",
+            },
+        },
+        "maersk": {
+            "name": "Maersk (Ocean Freight)",
+            "api_version": "v2",
+            "auth": "API Key",
+            "base_url": "https://api.maersk.com",
+            "key_endpoints": {
+                "tracking": "/shipments/{shipmentId}",
+                "schedules": "/schedules/vessel-schedules",
+                "rates": "/rates",
+                "booking": "/bookings",
+            },
+            "tracking_fields": ["shipmentId", "transportPlan", "containers", "milestones",
+                                 "estimatedArrival", "vesselName", "voyageNumber"],
+            "modes": ["ocean_fcl", "ocean_lcl", "intermodal"],
+            "webhook_support": True,
+            "normalized_status_map": {
+                "BOOKED": "order_created", "GATED_IN": "picked_up", "VESSEL_DEPARTED": "in_transit",
+                "VESSEL_ARRIVED": "in_transit", "GATED_OUT": "out_for_delivery", "DELIVERED": "delivered",
+            },
+        },
+        "dhl": {
+            "name": "DHL Express",
+            "api_version": "v2",
+            "auth": "Basic Auth / API Key",
+            "base_url": "https://api-eu.dhl.com",
+            "key_endpoints": {
+                "tracking": "/track/shipments?trackingNumber={trackingNumber}",
+                "rates": "/rates",
+                "pickup": "/pickups",
+                "ship": "/shipments",
+            },
+            "tracking_fields": ["id", "description", "status", "timestamp", "location", "events"],
+            "modes": ["express", "parcel", "freight", "ecommerce"],
+            "webhook_support": True,
+            "normalized_status_map": {
+                "pre-transit": "order_created", "transit": "in_transit",
+                "delivered": "delivered", "failure": "exception", "unknown": "unknown",
+            },
+        },
+    }
+
+    NORMALIZED_TRACKING_SCHEMA = {
+        "shipment_id": "Unique identifier for the shipment",
+        "carrier": "Carrier name (fedex, ups, maersk, dhl, etc.)",
+        "tracking_number": "Carrier-specific tracking number",
+        "origin": {"address": "str", "city": "str", "state": "str", "country": "str", "postal_code": "str"},
+        "destination": {"address": "str", "city": "str", "state": "str", "country": "str", "postal_code": "str"},
+        "status": "Normalized status: order_created | picked_up | in_transit | out_for_delivery | delivered | exception",
+        "estimated_delivery": "ISO 8601 datetime string",
+        "actual_delivery": "ISO 8601 datetime string or null",
+        "events": [{"timestamp": "ISO 8601", "location": "str", "status": "normalized status", "description": "str"}],
+        "mode": "transport mode: express | ground | ocean_fcl | ocean_lcl | air | freight | intermodal",
+        "weight_kg": "float",
+        "dimensions_cm": {"length": "float", "width": "float", "height": "float"},
+        "service_level": "str",
+        "carbon_kg_co2e": "Estimated CO2 equivalent for this shipment (float)",
+    }
+
+    # ---------------------------------------------------------------------------
+    # Cross-ERP Context Bridge Data
+    # ---------------------------------------------------------------------------
+    ERP_SYSTEMS = {
+        "sap": {
+            "name": "SAP S/4HANA",
+            "modules": ["MM (Materials Management)", "SD (Sales & Distribution)", "WM (Warehouse Management)",
+                        "PP (Production Planning)", "FI (Financial Accounting)", "CO (Controlling)",
+                        "EWM (Extended Warehouse Management)", "TM (Transportation Management)"],
+            "key_objects": {
+                "purchase_order": {"object": "Purchase Order (ME21N)", "table": "EKKO/EKPO", "idoc": "ORDERS05"},
+                "sales_order": {"object": "Sales Order (VA01)", "table": "VBAK/VBAP", "idoc": "ORDERS05"},
+                "goods_receipt": {"object": "Goods Receipt (MIGO)", "table": "MKPF/MSEG", "idoc": "DESADV"},
+                "invoice": {"object": "Vendor Invoice (MIRO)", "table": "RBKP/RSEG", "idoc": "INVOIC02"},
+                "material": {"object": "Material Master (MM60)", "table": "MARA/MARC", "idoc": "MATMAS05"},
+                "vendor": {"object": "Vendor Master (XK01)", "table": "LFA1/LFB1", "idoc": "CREMAS05"},
+            },
+            "integration_protocols": ["IDoc", "BAPI", "RFC", "OData (REST)", "SOAP"],
+            "mcp_approach": "Use SAP OData services via /sap/opu/odata/ namespace for real-time reads",
+        },
+        "oracle": {
+            "name": "Oracle Fusion SCM / ERP Cloud",
+            "modules": ["Order Management", "Inventory Management", "Procurement", "Warehouse Management",
+                        "Transportation Management", "Manufacturing", "Financial Management"],
+            "key_objects": {
+                "purchase_order": {"object": "Purchase Order", "api": "purchaseOrders", "rest": "/fscmRestApi/resources/11.13.18.05/purchaseOrders"},
+                "sales_order": {"object": "Sales Order", "api": "salesOrders", "rest": "/fscmRestApi/resources/11.13.18.05/salesOrders"},
+                "receipt": {"object": "Receipt", "api": "receipts", "rest": "/fscmRestApi/resources/11.13.18.05/receipts"},
+                "invoice": {"object": "Payables Invoice", "api": "invoices", "rest": "/fscmRestApi/resources/11.13.18.05/invoices"},
+                "item": {"object": "Inventory Item", "api": "inventoryItems", "rest": "/fscmRestApi/resources/11.13.18.05/inventoryItems"},
+                "supplier": {"object": "Supplier", "api": "suppliers", "rest": "/fscmRestApi/resources/11.13.18.05/suppliers"},
+            },
+            "integration_protocols": ["REST (JSON)", "SOAP", "Oracle Integration Cloud (OIC)", "File-based Load"],
+            "mcp_approach": "Use Oracle REST APIs with JWT auth; OIC pipelines for real-time sync",
+        },
+        "netsuite": {
+            "name": "Oracle NetSuite",
+            "modules": ["Order Management", "Inventory", "Procurement", "Financial Management",
+                        "Warehouse Management", "Manufacturing"],
+            "key_objects": {
+                "purchase_order": {"object": "Purchase Order", "record_type": "purchaseorder", "rest": "/rest/record/v1/purchaseorder"},
+                "sales_order": {"object": "Sales Order", "record_type": "salesorder", "rest": "/rest/record/v1/salesorder"},
+                "item_receipt": {"object": "Item Receipt", "record_type": "itemreceipt", "rest": "/rest/record/v1/itemreceipt"},
+                "vendor_bill": {"object": "Vendor Bill", "record_type": "vendorbill", "rest": "/rest/record/v1/vendorbill"},
+                "inventory_item": {"object": "Inventory Item", "record_type": "inventoryitem", "rest": "/rest/record/v1/inventoryitem"},
+                "vendor": {"object": "Vendor", "record_type": "vendor", "rest": "/rest/record/v1/vendor"},
+            },
+            "integration_protocols": ["SuiteQL (REST)", "SuiteTalk SOAP", "RESTlet", "CSV Import"],
+            "mcp_approach": "Use SuiteQL for complex queries; REST Record API for CRUD; SuiteScript 2.x for custom logic",
+        },
+        "dynamics365": {
+            "name": "Microsoft Dynamics 365 SCM",
+            "modules": ["Supply Chain Management", "Finance", "Commerce", "Warehouse Management",
+                        "Transportation Management", "Production Control"],
+            "key_objects": {
+                "purchase_order": {"object": "Purchase Order", "entity": "PurchaseOrderHeaders", "odata": "/data/PurchaseOrderHeaders"},
+                "sales_order": {"object": "Sales Order", "entity": "SalesOrderHeadersV2", "odata": "/data/SalesOrderHeadersV2"},
+                "product_receipt": {"object": "Product Receipt", "entity": "PurchaseOrderProductReceipts", "odata": "/data/PurchaseOrderProductReceipts"},
+                "vendor_invoice": {"object": "Vendor Invoice", "entity": "VendorInvoiceHeaders", "odata": "/data/VendorInvoiceHeaders"},
+                "released_product": {"object": "Released Product", "entity": "ReleasedProductsV2", "odata": "/data/ReleasedProductsV2"},
+                "vendor": {"object": "Vendor", "entity": "VendorsV2", "odata": "/data/VendorsV2"},
+            },
+            "integration_protocols": ["OData (REST)", "SOAP", "Data Management Framework", "Logic Apps", "Azure Service Bus"],
+            "mcp_approach": "Use D365 OData REST API; MCP server natively supported via Dynamics 365 ERP MCP (Build 2025)",
+        },
+    }
+
+    ERP_FIELD_MAPPINGS = {
+        "purchase_order": {
+            "sap": {"id": "EKKO.EBELN", "vendor": "EKKO.LIFNR", "date": "EKKO.BEDAT", "amount": "EKKO.NETWR", "currency": "EKKO.WAERS", "status": "EKKO.STATU"},
+            "oracle": {"id": "PO_NUMBER", "vendor": "SUPPLIER_ID", "date": "CREATION_DATE", "amount": "AMOUNT", "currency": "CURRENCY_CODE", "status": "STATUS"},
+            "netsuite": {"id": "tranId", "vendor": "entity.id", "date": "tranDate", "amount": "total", "currency": "currency.id", "status": "status"},
+            "dynamics365": {"id": "PurchaseOrderNumber", "vendor": "VendorAccountNumber", "date": "OrderDate", "amount": "TotalInvoiceAmount", "currency": "CurrencyCode", "status": "DocumentState"},
+        },
+        "sales_order": {
+            "sap": {"id": "VBAK.VBELN", "customer": "VBAK.KUNNR", "date": "VBAK.AUDAT", "amount": "VBAK.NETWR", "currency": "VBAK.WAERS", "status": "VBAK.GBSTA"},
+            "oracle": {"id": "ORDER_NUMBER", "customer": "CUSTOMER_ID", "date": "ORDERED_DATE", "amount": "ORDERED_AMOUNT", "currency": "TRANSACTIONAL_CURR_CODE", "status": "FLOW_STATUS_CODE"},
+            "netsuite": {"id": "tranId", "customer": "entity.id", "date": "tranDate", "amount": "total", "currency": "currency.id", "status": "status"},
+            "dynamics365": {"id": "SalesOrderNumber", "customer": "CustomerAccountNumber", "date": "RequestedShippingDate", "amount": "TotalAmount", "currency": "CurrencyCode", "status": "SalesOrderStatus"},
+        },
+        "invoice": {
+            "sap": {"id": "RBKP.BELNR", "vendor": "RBKP.LIFNR", "date": "RBKP.BLDAT", "amount": "RBKP.RMWWR", "currency": "RBKP.WAERS", "status": "RBKP.RBSTAT"},
+            "oracle": {"id": "INVOICE_NUM", "vendor": "VENDOR_ID", "date": "INVOICE_DATE", "amount": "INVOICE_AMOUNT", "currency": "INVOICE_CURRENCY_CODE", "status": "APPROVAL_STATUS"},
+            "netsuite": {"id": "tranId", "vendor": "entity.id", "date": "tranDate", "amount": "total", "currency": "currency.id", "status": "status"},
+            "dynamics365": {"id": "InvoiceNumber", "vendor": "VendorAccountNumber", "date": "InvoiceDate", "amount": "InvoiceAmount", "currency": "CurrencyCode", "status": "PaymentStatus"},
+        },
+    }
+
+    # ---------------------------------------------------------------------------
+    # Continuous Planning Templates
+    # ---------------------------------------------------------------------------
+    PLANNING_TEMPLATES = {
+        "demand_sensing": {
+            "title": "Demand Sensing & Forecasting Template",
+            "horizon": "rolling_13_week",
+            "inputs": [
+                "Point-of-sale (POS) data feed",
+                "E-commerce order velocity (last 7/14/28 days)",
+                "Distributor sell-through rates",
+                "Seasonal index by SKU/category",
+                "Promotional calendar (promo lift factors)",
+                "External signals: weather, events, economic indicators",
+            ],
+            "outputs": [
+                "Statistical baseline forecast (ARIMA / ETS model)",
+                "Consensus forecast with market intelligence overlay",
+                "Forecast accuracy (MAPE, bias) by SKU tier",
+                "Demand variability coefficient (CV) for safety stock calc",
+            ],
+            "review_cadence": "Weekly S&OP demand review",
+            "mcp_context_fields": ["sku_id", "location_id", "week", "baseline_forecast",
+                                   "adjusted_forecast", "actual_demand", "forecast_error", "promo_flag"],
+        },
+        "inventory_optimization": {
+            "title": "Inventory Position & Optimization Template",
+            "horizon": "rolling_26_week",
+            "inputs": [
+                "Current on-hand inventory by location",
+                "In-transit inventory with ETA",
+                "Open purchase orders and expected receipts",
+                "Safety stock targets (service level driven)",
+                "Reorder points and economic order quantities (EOQ)",
+                "Inventory carrying cost rate",
+            ],
+            "outputs": [
+                "Days of supply (DOS) by SKU/location",
+                "Inventory health: overstock, healthy, understock, stockout risk",
+                "Reorder recommendations with suggested quantities",
+                "Working capital impact of reorder decisions",
+            ],
+            "review_cadence": "Daily inventory health review; weekly reorder execution",
+            "mcp_context_fields": ["sku_id", "location_id", "on_hand_qty", "in_transit_qty",
+                                   "open_po_qty", "safety_stock", "reorder_point", "dos",
+                                   "inventory_status", "recommended_action"],
+        },
+        "constraint_management": {
+            "title": "Supply Constraint & Capacity Template",
+            "horizon": "rolling_12_week",
+            "inputs": [
+                "Supplier confirmed capacity by week",
+                "Manufacturing capacity (hours / units) by line",
+                "Transportation capacity by lane and mode",
+                "DC/warehouse throughput constraints",
+                "Known constraints: shutdowns, holidays, planned maintenance",
+            ],
+            "outputs": [
+                "Constrained supply plan by SKU/week",
+                "Constraint bottleneck identification (critical path)",
+                "Allocation recommendations when supply < demand",
+                "Recovery plan timeline for constraint resolution",
+            ],
+            "review_cadence": "Weekly supply review; real-time exception monitoring",
+            "mcp_context_fields": ["sku_id", "supplier_id", "week", "unconstrained_plan",
+                                   "constrained_plan", "constraint_type", "constraint_qty",
+                                   "allocation_priority", "recovery_date"],
+        },
+        "sop_integration": {
+            "title": "Sales & Operations Planning (S&OP) Integration Template",
+            "horizon": "rolling_18_month",
+            "inputs": [
+                "Demand plan (consensus from demand sensing)",
+                "Supply plan (constrained, from constraint management)",
+                "Financial plan (revenue, margin, working capital targets)",
+                "New product introduction (NPI) pipeline",
+                "Strategic inventory build plans",
+                "Customer service level commitments",
+            ],
+            "outputs": [
+                "Integrated business plan: demand vs supply vs finance reconciliation",
+                "Open issues and risks with recommended decisions",
+                "Approved operational plan for execution",
+                "KPI dashboard: fill rate, inventory turns, OTD, forecast accuracy",
+            ],
+            "review_cadence": "Monthly executive S&OP; weekly operational review",
+            "mcp_context_fields": ["month", "product_family", "demand_plan", "supply_plan",
+                                   "financial_target", "gap_to_plan", "risk_flag",
+                                   "decision_required", "approved_plan"],
+        },
+    }
+
+    # ---------------------------------------------------------------------------
+    # Carbon Footprint & Sustainability Data
+    # ---------------------------------------------------------------------------
+    CARBON_EMISSION_FACTORS = {
+        "transport_modes": {
+            "air_freight": {
+                "kg_co2e_per_tonne_km": 0.602,
+                "description": "Air freight (average belly + freighter)",
+                "relative_impact": "highest",
+                "use_cases": "Time-critical, high-value, low-weight goods",
+            },
+            "ocean_freight_container": {
+                "kg_co2e_per_tonne_km": 0.016,
+                "description": "Container shipping (average VLCC to feeder)",
+                "relative_impact": "lowest_for_long_distance",
+                "use_cases": "Bulk transcontinental trade, non-time-sensitive",
+            },
+            "road_truck_diesel": {
+                "kg_co2e_per_tonne_km": 0.096,
+                "description": "Diesel truck (average 40t GVW, 50% load)",
+                "relative_impact": "medium",
+                "use_cases": "Regional distribution, last-mile",
+            },
+            "road_truck_electric": {
+                "kg_co2e_per_tonne_km": 0.028,
+                "description": "Battery-electric truck (EU grid average)",
+                "relative_impact": "low",
+                "use_cases": "Urban last-mile, short-haul distribution",
+            },
+            "rail_freight": {
+                "kg_co2e_per_tonne_km": 0.028,
+                "description": "Rail freight (average diesel + electric mix)",
+                "relative_impact": "low",
+                "use_cases": "Long-haul continental, intermodal with road",
+            },
+            "intermodal_rail_road": {
+                "kg_co2e_per_tonne_km": 0.042,
+                "description": "Intermodal (rail + road drayage)",
+                "relative_impact": "low_to_medium",
+                "use_cases": "Continental trade lanes, port to inland DC",
+            },
+        },
+        "scope3_categories": {
+            "cat_1_purchased_goods": {
+                "description": "Upstream emissions from purchased goods and services",
+                "calculation_method": "Spend-based or activity-based (kg CO2e per $ spend or per unit)",
+                "data_needed": ["Supplier Scope 1+2 emissions", "Spend by category", "Emission intensity factors"],
+            },
+            "cat_4_upstream_transport": {
+                "description": "Transportation of purchased goods to your facility",
+                "calculation_method": "Tonne-km × emission factor per transport mode",
+                "data_needed": ["Shipment weight (tonnes)", "Distance (km)", "Transport mode"],
+            },
+            "cat_9_downstream_transport": {
+                "description": "Transportation of sold goods to customer",
+                "calculation_method": "Tonne-km × emission factor per transport mode",
+                "data_needed": ["Shipment weight (tonnes)", "Distance (km)", "Transport mode"],
+            },
+            "cat_11_use_of_sold_products": {
+                "description": "Emissions from customer use of sold products",
+                "calculation_method": "Lifetime energy consumption × grid emission factor",
+                "data_needed": ["Product energy consumption profile", "Customer location grid factor"],
+            },
+        },
+        "routing_optimization": {
+            "carbon_score_formula": "base_emissions × (1 - load_factor_bonus) × route_efficiency_factor",
+            "carbon_vs_cost_tradeoffs": [
+                "Air → Rail shift: ~94% emission reduction, +3-5 days transit",
+                "Road → Rail shift: ~70% emission reduction, +1-2 days transit",
+                "Consolidation (LTL → FTL): ~30-50% emission reduction per unit, volume dependent",
+                "Nearshoring: reduces Cat 4 transport emissions, may increase Cat 1 production emissions",
+                "Modal shift to ocean: ~80% emission reduction vs air, +2-4 weeks transit",
+            ],
+            "green_corridors": [
+                "Rotterdam → Antwerp → Duisburg (Rhine corridor, electrified rail)",
+                "Los Angeles → Chicago (rail intermodal, fastest in US)",
+                "Singapore → Busan (container shipping, highest efficiency lane)",
+                "Mexico City → Laredo → Dallas (nearshore road corridor)",
+            ],
+        },
+    }
+
     def __init__(self):
         self.server = Server("cis-assistant")
         self.contracts: Dict[str, Any] = {}
         self.error_patterns: Dict[str, List[Dict[str, Any]]] = {}
         self.examples: List[Dict[str, Any]] = []
         self.bible_content: str = self._load_bible_content()
+        # Continuous planning sessions (in-memory rolling context)
+        self.planning_sessions: Dict[str, Dict[str, Any]] = {}
 
         # Register handlers
         self._setup_handlers()
@@ -1119,6 +1568,129 @@ contract CertificationNFT {
                         "required": ["code"]
                     }
                 ),
+                Tool(
+                    name="get_supplier_intelligence",
+                    description="Assess supplier risk across financial health, geopolitical exposure, lead time variance, and ESG scores. Returns a structured risk report with signals, risk levels, and recommended data sources.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "risk_category": {
+                                "type": "string",
+                                "description": "Risk category to assess. Omit to get all categories.",
+                                "enum": ["financial_health", "geopolitical_exposure", "lead_time_variance", "esg_scores"]
+                            },
+                            "supplier_name": {
+                                "type": "string",
+                                "description": "Optional supplier name for context (used in report labeling)"
+                            },
+                            "industry": {
+                                "type": "string",
+                                "description": "Optional industry vertical for tailored guidance (e.g., electronics, food, apparel)"
+                            }
+                        },
+                        "required": []
+                    }
+                ),
+                Tool(
+                    name="normalize_carrier_tracking",
+                    description="Get normalized carrier tracking schemas and API integration guidance for FedEx, UPS, Maersk, and DHL. Returns a unified multi-modal visibility layer definition.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "carrier": {
+                                "type": "string",
+                                "description": "Specific carrier to retrieve API details for. Omit to get the normalized schema and all carriers.",
+                                "enum": ["fedex", "ups", "maersk", "dhl"]
+                            },
+                            "use_case": {
+                                "type": "string",
+                                "description": "Integration use case for tailored guidance",
+                                "enum": ["tracking_visibility", "rate_shopping", "shipment_booking", "webhook_events"]
+                            }
+                        },
+                        "required": []
+                    }
+                ),
+                Tool(
+                    name="bridge_erp_context",
+                    description="Translate data objects and field mappings between ERP systems (SAP, Oracle Fusion, NetSuite, Dynamics 365). Returns field-level mapping and integration protocol guidance for the cross-ERP context bridge.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "source_erp": {
+                                "type": "string",
+                                "description": "Source ERP system",
+                                "enum": ["sap", "oracle", "netsuite", "dynamics365"]
+                            },
+                            "target_erp": {
+                                "type": "string",
+                                "description": "Target ERP system",
+                                "enum": ["sap", "oracle", "netsuite", "dynamics365"]
+                            },
+                            "data_category": {
+                                "type": "string",
+                                "description": "Data category to map between systems",
+                                "enum": ["purchase_order", "sales_order", "invoice", "all"]
+                            }
+                        },
+                        "required": []
+                    }
+                ),
+                Tool(
+                    name="get_continuous_planning_template",
+                    description="Get a continuous planning template with rolling demand signals, inventory positions, and constraint history. Supports persistent planning partner workflows across demand sensing, inventory optimization, constraint management, and S&OP.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "planning_type": {
+                                "type": "string",
+                                "description": "Type of planning template to retrieve. Omit to list all available templates.",
+                                "enum": ["demand_sensing", "inventory_optimization", "constraint_management", "sop_integration"]
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Optional session ID to retrieve or continue a named planning session"
+                            },
+                            "context_update": {
+                                "type": "object",
+                                "description": "Optional key-value pairs to update/record in the planning session context (e.g., current demand figures, constraint changes)"
+                            }
+                        },
+                        "required": []
+                    }
+                ),
+                Tool(
+                    name="assess_supply_chain_carbon",
+                    description="Calculate Scope 3 carbon footprint for supply chain operations and get carbon-aware routing recommendations. Injects CO2e data into planning and logistics decisions.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "transport_mode": {
+                                "type": "string",
+                                "description": "Transport mode to assess or compare",
+                                "enum": ["air_freight", "ocean_freight_container", "road_truck_diesel", "road_truck_electric", "rail_freight", "intermodal_rail_road"]
+                            },
+                            "weight_tonnes": {
+                                "type": "number",
+                                "description": "Shipment weight in metric tonnes"
+                            },
+                            "distance_km": {
+                                "type": "number",
+                                "description": "Transport distance in kilometres"
+                            },
+                            "scope3_category": {
+                                "type": "string",
+                                "description": "Scope 3 category to analyse. Omit to get all categories.",
+                                "enum": ["cat_1_purchased_goods", "cat_4_upstream_transport", "cat_9_downstream_transport", "cat_11_use_of_sold_products"]
+                            },
+                            "compare_modes": {
+                                "type": "boolean",
+                                "description": "If true, returns a comparison of all transport modes for the given weight and distance"
+                            }
+                        },
+                        "required": []
+                    }
+                ),
             ]
 
         @self.server.call_tool()
@@ -1159,6 +1731,16 @@ contract CertificationNFT {
                 return await self._get_business_onboarding_guide(arguments)
             elif name == "validate_smart_contract":
                 return await self._validate_smart_contract(arguments)
+            elif name == "get_supplier_intelligence":
+                return await self._get_supplier_intelligence(arguments)
+            elif name == "normalize_carrier_tracking":
+                return await self._normalize_carrier_tracking(arguments)
+            elif name == "bridge_erp_context":
+                return await self._bridge_erp_context(arguments)
+            elif name == "get_continuous_planning_template":
+                return await self._get_continuous_planning_template(arguments)
+            elif name == "assess_supply_chain_carbon":
+                return await self._assess_supply_chain_carbon(arguments)
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -1222,6 +1804,28 @@ contract CertificationNFT {
                         PromptArgument(
                             name="focus_area",
                             description="Area to focus on: getting_started, cost_analysis, integration, all",
+                            required=False
+                        )
+                    ]
+                ),
+                Prompt(
+                    name="supplier_intelligence_workflow",
+                    description="Step-by-step guide for building a supplier risk intelligence process covering financial health, geopolitical exposure, lead time variance, and ESG scoring",
+                    arguments=[
+                        PromptArgument(
+                            name="risk_category",
+                            description="Risk category to focus on: financial_health, geopolitical_exposure, lead_time_variance, esg_scores, all",
+                            required=False
+                        )
+                    ]
+                ),
+                Prompt(
+                    name="sustainability_planning_guide",
+                    description="Guide for embedding Scope 3 carbon data into supply chain planning and logistics decisions for carbon-aware routing and sourcing",
+                    arguments=[
+                        PromptArgument(
+                            name="focus_area",
+                            description="Area to focus on: carbon_calculation, modal_shift, scope3_reporting, green_routing",
                             required=False
                         )
                     ]
@@ -1613,6 +2217,133 @@ Use `get_business_onboarding_guide(guide_section="integration_guide")` for:
 - `validate_smart_contract` - Validate contract security
 - `get_business_onboarding_guide` - Detailed adoption guides
 - `get_cis_principles` - CIS methodology for robust design"""
+                            )
+                        )
+                    ]
+                )
+            elif name == "supplier_intelligence_workflow":
+                risk_category = arguments.get("risk_category", "all") if arguments else "all"
+                return GetPromptResult(
+                    description=f"Supplier risk intelligence workflow - {risk_category}",
+                    messages=[
+                        PromptMessage(
+                            role="user",
+                            content=TextContent(
+                                type="text",
+                                text=f"""# Supplier Intelligence Workflow
+
+## Focus: {risk_category.replace('_', ' ').title()}
+
+## Why Supplier Intelligence Matters
+
+Supplier disruptions account for over 40% of supply chain failures. A continuous supplier
+intelligence process surfaces risks before they become disruptions.
+
+## The Four Risk Dimensions
+
+### 1. Financial Health
+Monitor credit ratings, cash flow trends, and revenue concentration.
+Use `get_supplier_intelligence(risk_category="financial_health")` to see signals and risk levels.
+
+### 2. Geopolitical Exposure
+Track country risk, sanctions, tariffs, and FX volatility.
+Use `get_supplier_intelligence(risk_category="geopolitical_exposure")` for country risk factors.
+
+### 3. Lead Time Variance
+Watch OTD%, lead time mean/stdev, and port congestion.
+Use `get_supplier_intelligence(risk_category="lead_time_variance")` for delivery performance signals.
+
+### 4. ESG Scores
+Assess carbon emissions intensity, labor standards, and third-party audit results.
+Use `get_supplier_intelligence(risk_category="esg_scores")` for ESG scoring framework.
+
+## Building Your Supplier Risk Register
+
+1. **Tier your suppliers**: Critical (single source), Important (dual source), Standard (multi source)
+2. **Assign risk categories**: Run `get_supplier_intelligence` for each category across Tier 1 suppliers
+3. **Set monitoring cadence**: Weekly for critical, monthly for important, quarterly for standard
+4. **Define escalation thresholds**: Risk level changes trigger procurement or engineering review
+5. **Connect to planning**: Feed risk signals into `get_continuous_planning_template` for constrained supply plans
+
+## Data Source Integration
+
+- EcoVadis / CDP for ESG → feed into `esg_scores` risk category
+- Everstream Analytics / Riskmethods for geopolitical → `geopolitical_exposure`
+- ERP OTD data → `lead_time_variance` (use `bridge_erp_context` to normalize across ERPs)
+- D&B / Coface for financial → `financial_health`
+
+## Carbon Integration
+
+For ESG-aware sourcing decisions, combine with:
+`assess_supply_chain_carbon(scope3_category="cat_1_purchased_goods")`"""
+                            )
+                        )
+                    ]
+                )
+            elif name == "sustainability_planning_guide":
+                focus_area = arguments.get("focus_area", "carbon_calculation") if arguments else "carbon_calculation"
+                return GetPromptResult(
+                    description=f"Sustainability and carbon-aware supply chain planning - {focus_area}",
+                    messages=[
+                        PromptMessage(
+                            role="user",
+                            content=TextContent(
+                                type="text",
+                                text=f"""# Sustainability-Embedded Supply Chain Planning
+
+## Focus: {focus_area.replace('_', ' ').title()}
+
+## Why Carbon-Aware Planning
+
+Scope 3 emissions (supply chain) represent 70-90% of most companies' carbon footprint.
+Regulators (EU CBAM, SEC climate disclosure, CSRD) are making Scope 3 reporting mandatory.
+Carbon intensity is becoming a native planning parameter alongside cost and service level.
+
+## Carbon Calculation Workflow
+
+### Step 1: Identify Your Scope 3 Categories
+Use `assess_supply_chain_carbon(scope3_category="cat_4_upstream_transport")` to get:
+- Calculation methodology (tonne-km × emission factor)
+- Required data inputs
+- Relevant GHG Protocol guidance
+
+### Step 2: Calculate Shipment Emissions
+Use `assess_supply_chain_carbon` with weight and distance:
+```
+assess_supply_chain_carbon(
+    transport_mode="road_truck_diesel",
+    weight_tonnes=10.0,
+    distance_km=500
+)
+```
+
+### Step 3: Compare Modal Options
+Use `assess_supply_chain_carbon(compare_modes=True, weight_tonnes=X, distance_km=Y)` to see
+the full modal comparison and identify carbon reduction opportunities.
+
+### Step 4: Embed in Routing Decisions
+- Air → Rail shift: ~94% emission reduction (use for non-time-critical goods)
+- Road → Rail shift: ~70% reduction (regional to continental lanes)
+- LTL → FTL consolidation: 30-50% reduction per unit shipped
+
+### Step 5: Supplier Carbon Scoring
+Combine with `get_supplier_intelligence(risk_category="esg_scores")` to:
+- Score suppliers on Scope 1+2 carbon intensity
+- Prefer low-carbon suppliers in sourcing decisions
+- Track Scope 3 Cat 1 (purchased goods) emissions
+
+## Reporting Integration
+
+- Connect carbon data to your ERP using `bridge_erp_context`
+- Add `carbon_kg_co2e` field to shipment records via `normalize_carrier_tracking`
+- Record carbon KPIs in `get_continuous_planning_template(planning_type="sop_integration")`
+
+## Green Routing Recommendations
+
+Use `assess_supply_chain_carbon` to identify optimal green corridors:
+- Rotterdam → Duisburg (electrified Rhine rail)
+- LA → Chicago (US intermodal)
+- Singapore → Busan (efficient ocean lane)"""
                             )
                         )
                     ]
@@ -2812,6 +3543,594 @@ Use `get_business_onboarding_guide(guide_section="use_case_guide", business_type
 2. Deploy to Base Sepolia testnet for functional testing
 3. Consider a professional audit for production contracts
 4. Use `get_base_network_info` for deployment configuration"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _get_supplier_intelligence(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Return supplier risk assessment framework and signals"""
+        risk_category = arguments.get("risk_category")
+        supplier_name = arguments.get("supplier_name", "")
+        industry = arguments.get("industry", "")
+
+        header = "# Supplier Intelligence Risk Assessment"
+        if supplier_name:
+            header += f" — {supplier_name}"
+        if industry:
+            header += f" ({industry})"
+
+        if risk_category and risk_category in self.SUPPLIER_RISK_FACTORS:
+            data = self.SUPPLIER_RISK_FACTORS[risk_category]
+            signals_txt = "\n".join(f"- {s}" for s in data["signals"])
+            risk_levels_txt = "\n".join(
+                f"- **{level.upper()}**: {desc}" for level, desc in data["risk_levels"].items()
+            )
+            sources_txt = "\n".join(f"- {src}" for src in data["data_sources"])
+            result = f"""{header}
+
+## {data['title']}
+
+### Risk Signals to Monitor
+{signals_txt}
+
+### Risk Level Definitions
+{risk_levels_txt}
+
+### Recommended Data Sources
+{sources_txt}
+
+## Next Steps
+
+- Combine with `get_continuous_planning_template(planning_type="constraint_management")` to build a constrained supply plan when risk is high
+- Use `bridge_erp_context` to pull OTD and order history from your ERP for lead_time_variance scoring
+- Connect ESG scores to `assess_supply_chain_carbon` for Scope 3 Cat 1 visibility"""
+        else:
+            sections = []
+            for key, data in self.SUPPLIER_RISK_FACTORS.items():
+                signals_txt = "\n".join(f"  - {s}" for s in data["signals"][:3])
+                sections.append(
+                    f"### {data['title']}\n**Tool:** `get_supplier_intelligence(risk_category=\"{key}\")`\n"
+                    f"**Key signals (top 3):**\n{signals_txt}"
+                )
+            all_sections = "\n\n".join(sections)
+            result = f"""{header}
+
+## Overview
+
+Supplier risk spans four dimensions. Use `risk_category` to drill into each one.
+
+{all_sections}
+
+## Integrated Workflow
+
+1. Score all Tier-1 suppliers across all four dimensions
+2. Flag suppliers with ≥2 HIGH or any CRITICAL rating for immediate review
+3. Feed financial and lead-time risk into your constrained supply plan via `get_continuous_planning_template`
+4. Include ESG scores in sourcing RFPs to drive Scope 3 reduction
+5. Use `assess_supply_chain_carbon(scope3_category="cat_1_purchased_goods")` for purchased-goods emissions
+
+## Data Sources Summary
+
+| Dimension | Primary Sources |
+|-----------|----------------|
+| Financial Health | Dun & Bradstreet, Coface, Everstream Analytics |
+| Geopolitical | Riskmethods, World Bank, OFAC |
+| Lead Time | ERP order history, TMS, Port authority APIs |
+| ESG | EcoVadis, CDP, Sustainalytics, MSCI ESG |"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _normalize_carrier_tracking(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Return carrier API details and normalized tracking schema"""
+        carrier = arguments.get("carrier")
+        use_case = arguments.get("use_case", "tracking_visibility")
+
+        # Map use cases to the relevant endpoint key
+        use_case_endpoint_map = {
+            "tracking_visibility": "tracking",
+            "rate_shopping": "rates",
+            "shipment_booking": "ship",
+            "webhook_events": "tracking",
+        }
+        relevant_endpoint_key = use_case_endpoint_map.get(use_case, "tracking")
+
+        if carrier and carrier in self.CARRIER_APIS:
+            data = self.CARRIER_APIS[carrier]
+            endpoints_txt = "\n".join(
+                f"- **{name}**: `{path}`" for name, path in data["key_endpoints"].items()
+            )
+            fields_txt = "\n".join(f"- `{f}`" for f in data["tracking_fields"])
+            status_map_txt = "\n".join(
+                f"- `{k}` → `{v}`" for k, v in data["normalized_status_map"].items()
+            )
+            modes_txt = ", ".join(data["modes"])
+            primary_endpoint = data["key_endpoints"].get(relevant_endpoint_key, list(data["key_endpoints"].values())[0])
+            result = f"""# {data['name']} API Integration Guide — {use_case.replace('_', ' ').title()}
+
+## Authentication
+**Method:** {data['auth']}
+**Base URL:** `{data['base_url']}`
+
+## Primary Endpoint for `{use_case}`
+`{data['base_url']}{primary_endpoint}`
+
+## All Key Endpoints
+{endpoints_txt}
+
+## Tracking Fields
+{fields_txt}
+
+## Normalized Status Map
+Maps {data['name']}-specific codes to the unified tracking schema:
+{status_map_txt}
+
+## Supported Transport Modes
+{modes_txt}
+
+## Webhook Support
+{"✅ Supported — subscribe to shipment events for real-time status updates" if data['webhook_support'] else "❌ Not supported — use polling"}
+
+## Normalized Schema Integration
+
+Map all `{carrier}` tracking responses to the unified schema using `normalize_carrier_tracking()`.
+The unified schema includes `carrier`, `status` (normalized), `events`, `mode`, and `carbon_kg_co2e`.
+
+## Next Steps
+
+- Use `assess_supply_chain_carbon` to add `carbon_kg_co2e` to each shipment record
+- Store normalized events in your ERP via `bridge_erp_context`
+- Feed delivery performance into `get_supplier_intelligence(risk_category="lead_time_variance")`"""
+        else:
+            carriers_list = []
+            for key, c in self.CARRIER_APIS.items():
+                modes = ", ".join(c["modes"])
+                carriers_list.append(
+                    f"### {c['name']} (`{key}`)\n"
+                    f"- **Auth**: {c['auth']}\n"
+                    f"- **Base URL**: `{c['base_url']}`\n"
+                    f"- **Modes**: {modes}\n"
+                    f"- **Webhooks**: {'Yes' if c['webhook_support'] else 'No'}"
+                )
+            carriers_txt = "\n\n".join(carriers_list)
+
+            schema_fields = "\n".join(
+                f"- **`{k}`**: {v}" if not isinstance(v, dict) else f"- **`{k}`**: object with fields {list(v.keys())}"
+                for k, v in self.NORMALIZED_TRACKING_SCHEMA.items()
+            )
+            result = f"""# Multi-Modal Carrier Visibility — Normalized Tracking Schema
+
+## Why a Unified Schema?
+
+Each carrier returns different field names, status codes, and date formats.
+The normalized schema provides a single context layer for all carriers,
+enabling agents to reason over shipments without carrier-specific logic.
+
+## Normalized Shipment Schema
+
+{schema_fields}
+
+## Supported Carriers
+
+{carriers_txt}
+
+## Integration Pattern
+
+```python
+# Pseudocode — normalize any carrier response
+def normalize_shipment(carrier: str, raw_response: dict) -> dict:
+    status_map = CARRIER_APIS[carrier]["normalized_status_map"]
+    return {{
+        "carrier": carrier,
+        "tracking_number": extract_tracking_number(raw_response, carrier),
+        "status": status_map.get(raw_response.get("statusCode"), "unknown"),
+        "events": normalize_events(raw_response, carrier),
+        "carbon_kg_co2e": calculate_carbon(raw_response, carrier),
+    }}
+```
+
+## Use Cases by Integration Type
+
+| Use Case | Tool call |
+|----------|-----------|
+| Tracking visibility | `normalize_carrier_tracking(carrier="fedex", use_case="tracking_visibility")` |
+| Rate shopping | `normalize_carrier_tracking(carrier="ups", use_case="rate_shopping")` |
+| Booking | `normalize_carrier_tracking(carrier="maersk", use_case="shipment_booking")` |
+| Real-time events | `normalize_carrier_tracking(use_case="webhook_events")` |
+
+## Carbon Integration
+
+Add `carbon_kg_co2e` to every shipment record:
+`assess_supply_chain_carbon(transport_mode=..., weight_tonnes=..., distance_km=...)`"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _bridge_erp_context(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Return cross-ERP field mappings and integration guidance"""
+        source_erp = arguments.get("source_erp")
+        target_erp = arguments.get("target_erp")
+        data_category = arguments.get("data_category", "all")
+
+        if source_erp and target_erp:
+            if source_erp not in self.ERP_SYSTEMS or target_erp not in self.ERP_SYSTEMS:
+                unknown = source_erp if source_erp not in self.ERP_SYSTEMS else target_erp
+                valid = ", ".join(self.ERP_SYSTEMS.keys())
+                return [TextContent(type="text", text=f"Unknown ERP system: '{unknown}'. Valid options: {valid}")]
+
+            src = self.ERP_SYSTEMS[source_erp]
+            tgt = self.ERP_SYSTEMS[target_erp]
+
+            if data_category != "all" and data_category in self.ERP_FIELD_MAPPINGS:
+                categories = {data_category: self.ERP_FIELD_MAPPINGS[data_category]}
+            else:
+                categories = self.ERP_FIELD_MAPPINGS
+
+            mapping_sections = []
+            for cat_name, cat_data in categories.items():
+                if source_erp in cat_data and target_erp in cat_data:
+                    src_fields = cat_data[source_erp]
+                    tgt_fields = cat_data[target_erp]
+                    rows = "\n".join(
+                        f"| {logical} | `{src_fields.get(logical, 'N/A')}` | `{tgt_fields.get(logical, 'N/A')}` |"
+                        for logical in src_fields
+                    )
+                    mapping_sections.append(
+                        f"### {cat_name.replace('_', ' ').title()}\n\n"
+                        f"| Logical Field | {src['name']} | {tgt['name']} |\n"
+                        f"|--------------|{'—' * (len(src['name']) + 2)}|{'—' * (len(tgt['name']) + 2)}|\n"
+                        f"{rows}"
+                    )
+
+            mappings_txt = "\n\n".join(mapping_sections) if mapping_sections else "No field mappings available for the selected category."
+
+            src_protocols = ", ".join(src["integration_protocols"])
+            tgt_protocols = ", ".join(tgt["integration_protocols"])
+
+            result = f"""# Cross-ERP Context Bridge: {src['name']} → {tgt['name']}
+
+## Field Mappings
+
+{mappings_txt}
+
+## Integration Protocols
+
+| System | Supported Protocols |
+|--------|---------------------|
+| {src['name']} | {src_protocols} |
+| {tgt['name']} | {tgt_protocols} |
+
+## Recommended Integration Approach
+
+**{src['name']}:** {src['mcp_approach']}
+
+**{tgt['name']}:** {tgt['mcp_approach']}
+
+## Translation Pattern
+
+```python
+# Pseudocode — translate a purchase order between ERPs
+def translate_po(source_po: dict, source_erp: str, target_erp: str) -> dict:
+    mapping = ERP_FIELD_MAPPINGS["purchase_order"]
+    src_map = mapping[source_erp]
+    tgt_map = mapping[target_erp]
+    return {{
+        tgt_field: source_po.get(src_map[logical])
+        for logical, tgt_field in tgt_map.items()
+    }}
+```
+
+## Next Steps
+
+- Use `normalize_carrier_tracking` to enrich shipment records before writing to target ERP
+- Feed the translated data into `get_continuous_planning_template` for unified planning context
+- Validate Scope 3 Cat 4 transport emissions via `assess_supply_chain_carbon`"""
+        else:
+            erp_list = []
+            for key, erp in self.ERP_SYSTEMS.items():
+                modules_txt = ", ".join(erp["modules"][:4]) + ("..." if len(erp["modules"]) > 4 else "")
+                protocols_txt = ", ".join(erp["integration_protocols"])
+                erp_list.append(
+                    f"### {erp['name']} (`{key}`)\n"
+                    f"- **Modules**: {modules_txt}\n"
+                    f"- **Protocols**: {protocols_txt}\n"
+                    f"- **MCP Approach**: {erp['mcp_approach']}"
+                )
+            erp_txt = "\n\n".join(erp_list)
+
+            categories_txt = "\n".join(f"- `{c}`" for c in self.ERP_FIELD_MAPPINGS.keys())
+
+            result = f"""# Cross-ERP Context Bridge
+
+## The Problem
+
+Most enterprises run multiple ERP systems simultaneously (SAP + Oracle + NetSuite + regional).
+Each system uses different field names, data models, and integration protocols.
+The Cross-ERP Context Bridge provides a neutral translation layer so agents can reason
+across all systems with a shared context.
+
+## Supported ERP Systems
+
+{erp_txt}
+
+## Available Data Categories for Mapping
+
+{categories_txt}
+
+## Usage
+
+```
+bridge_erp_context(
+    source_erp="sap",
+    target_erp="oracle",
+    data_category="purchase_order"
+)
+```
+
+## Integration Architecture
+
+```
+SAP OData  ──┐
+Oracle REST──┼──► Neutral Context Layer (MCP) ──► Agent Reasoning
+NetSuite SQL─┤
+D365 OData ──┘
+```
+
+## Supported Field Mappings
+
+{chr(10).join(f"- `{c}`: maps {', '.join(self.ERP_SYSTEMS.keys())}" for c in self.ERP_FIELD_MAPPINGS.keys())}
+
+## Next Steps
+
+- Use with `normalize_carrier_tracking` to bridge logistics data across ERPs
+- Feed unified context into `get_continuous_planning_template` for cross-system planning
+- Combine with `get_supplier_intelligence` for supplier master data normalization"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _get_continuous_planning_template(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Return continuous planning templates and manage in-memory planning sessions"""
+        planning_type = arguments.get("planning_type")
+        session_id = arguments.get("session_id")
+        context_update = arguments.get("context_update")
+
+        # Update or retrieve planning session if session_id provided
+        session_info = ""
+        if session_id:
+            if session_id not in self.planning_sessions:
+                self.planning_sessions[session_id] = {
+                    "created": datetime.now().isoformat(),
+                    "planning_type": planning_type,
+                    "context": {},
+                }
+            session = self.planning_sessions[session_id]
+            if context_update and isinstance(context_update, dict):
+                session["context"].update(context_update)
+                session["last_updated"] = datetime.now().isoformat()
+            ctx_items = "\n".join(f"  - **{k}**: {v}" for k, v in session["context"].items())
+            session_info = f"""
+## Active Planning Session: `{session_id}`
+
+- **Created**: {session.get('created', 'unknown')}
+- **Last Updated**: {session.get('last_updated', 'not yet updated')}
+- **Stored Context**:
+{ctx_items if ctx_items else '  (empty — use context_update to add planning data)'}
+"""
+
+        if planning_type and planning_type in self.PLANNING_TEMPLATES:
+            tpl = self.PLANNING_TEMPLATES[planning_type]
+            inputs_txt = "\n".join(f"- {inp}" for inp in tpl["inputs"])
+            outputs_txt = "\n".join(f"- {out}" for out in tpl["outputs"])
+            context_fields_txt = "\n".join(f"- `{f}`" for f in tpl["mcp_context_fields"])
+            result = f"""# Continuous Planning: {tpl['title']}
+{session_info}
+## Planning Horizon
+**{tpl['horizon'].replace('_', ' ').title()}**
+**Review Cadence**: {tpl['review_cadence']}
+
+## Required Inputs
+{inputs_txt}
+
+## Planning Outputs
+{outputs_txt}
+
+## MCP Context Fields
+These fields should be maintained in every planning session for this template:
+{context_fields_txt}
+
+## Session Management
+
+Use `session_id` to maintain a persistent planning context across conversations:
+```
+get_continuous_planning_template(
+    planning_type="{planning_type}",
+    session_id="my-planning-session",
+    context_update={{{", ".join(f'"{f}": <value>' for f in tpl['mcp_context_fields'][:3])}}}
+)
+```
+
+## Integration with Other Tools
+
+- **Supplier risk**: Feed `get_supplier_intelligence` outputs into `constraint_management` template
+- **Carrier data**: Use `normalize_carrier_tracking` to populate in-transit inventory figures
+- **ERP sync**: Use `bridge_erp_context` to read on-hand inventory and open orders
+- **Carbon**: Add carbon KPIs via `assess_supply_chain_carbon` to the S&OP dashboard"""
+        else:
+            templates_list = []
+            for key, tpl in self.PLANNING_TEMPLATES.items():
+                inputs_preview = tpl["inputs"][0] if tpl["inputs"] else ""
+                templates_list.append(
+                    f"### {tpl['title']}\n"
+                    f"- **Horizon**: {tpl['horizon'].replace('_', ' ').title()}\n"
+                    f"- **Cadence**: {tpl['review_cadence']}\n"
+                    f"- **Tool call**: `get_continuous_planning_template(planning_type=\"{key}\")`\n"
+                    f"- **Sample input**: {inputs_preview}"
+                )
+            templates_txt = "\n\n".join(templates_list)
+            active_sessions = len(self.planning_sessions)
+            result = f"""# Continuous Planning Partner — Template Library
+{session_info}
+## What Is Continuous Planning?
+
+Traditional planning is episodic — a monthly S&OP meeting, a weekly inventory review.
+Continuous planning transforms the AI from a one-off query tool into a persistent planning
+partner that maintains rolling context across demand signals, supply constraints, and financial targets.
+
+MCP enables this by keeping context across planning cycles, so every decision builds on shared history.
+
+## Active Planning Sessions
+
+{active_sessions} session(s) currently active in memory.
+Use `session_id` to create or resume a named session.
+
+## Available Planning Templates
+
+{templates_txt}
+
+## Recommended Planning Hierarchy
+
+1. **Demand Sensing** (weekly) → feeds into →
+2. **Inventory Optimization** (daily) → drives →
+3. **Constraint Management** (weekly) → rolls up into →
+4. **S&OP Integration** (monthly)
+
+## Getting Started
+
+```
+# Start a demand sensing session
+get_continuous_planning_template(
+    planning_type="demand_sensing",
+    session_id="q1-2026-demand",
+    context_update={{"sku_id": "SKU-001", "week": "2026-W01", "baseline_forecast": 500}}
+)
+```"""
+
+        return [TextContent(type="text", text=result)]
+
+    async def _assess_supply_chain_carbon(self, arguments: Dict[str, Any]) -> list[TextContent]:
+        """Calculate Scope 3 carbon footprint and return carbon-aware routing recommendations"""
+        transport_mode = arguments.get("transport_mode")
+        weight_tonnes = arguments.get("weight_tonnes")
+        distance_km = arguments.get("distance_km")
+        scope3_category = arguments.get("scope3_category")
+        compare_modes = arguments.get("compare_modes", False)
+
+        # Carbon calculation section
+        calc_section = ""
+        if transport_mode and weight_tonnes is not None and distance_km is not None:
+            if transport_mode in self.CARBON_EMISSION_FACTORS["transport_modes"]:
+                mode_data = self.CARBON_EMISSION_FACTORS["transport_modes"][transport_mode]
+                factor = mode_data["kg_co2e_per_tonne_km"]
+                total_co2e = factor * float(weight_tonnes) * float(distance_km)
+                calc_section = f"""
+## Carbon Calculation Result
+
+| Parameter | Value |
+|-----------|-------|
+| Transport Mode | {transport_mode.replace('_', ' ').title()} |
+| Weight | {weight_tonnes} tonnes |
+| Distance | {distance_km} km |
+| Emission Factor | {factor} kg CO₂e / tonne-km |
+| **Total Emissions** | **{total_co2e:.2f} kg CO₂e** |
+
+*Source: GHG Protocol / GLEC Framework emission factors*
+"""
+
+        # Modal comparison
+        comparison_section = ""
+        if compare_modes and weight_tonnes is not None and distance_km is not None:
+            rows = []
+            for mode_key, mode_data in self.CARBON_EMISSION_FACTORS["transport_modes"].items():
+                factor = mode_data["kg_co2e_per_tonne_km"]
+                total = factor * float(weight_tonnes) * float(distance_km)
+                rows.append((mode_key, total, mode_data["relative_impact"], mode_data["use_cases"]))
+            rows.sort(key=lambda x: x[1])
+            table_rows = "\n".join(
+                f"| {r[0].replace('_', ' ').title()} | {r[1]:.2f} kg | {r[2].replace('_', ' ')} | {r[3]} |"
+                for r in rows
+            )
+            comparison_section = f"""
+## Modal Comparison ({weight_tonnes}t × {distance_km}km)
+
+| Mode | CO₂e Emissions | Impact | Best For |
+|------|---------------|--------|----------|
+{table_rows}
+"""
+
+        # Scope 3 category section
+        scope3_section = ""
+        if scope3_category and scope3_category in self.CARBON_EMISSION_FACTORS["scope3_categories"]:
+            cat = self.CARBON_EMISSION_FACTORS["scope3_categories"][scope3_category]
+            data_needed_txt = "\n".join(f"- {d}" for d in cat["data_needed"])
+            scope3_section = f"""
+## Scope 3 Category: {scope3_category.replace('_', ' ').title()}
+
+**Description**: {cat['description']}
+
+**Calculation Method**: {cat['calculation_method']}
+
+**Data Required**:
+{data_needed_txt}
+"""
+        elif not scope3_category and not transport_mode:
+            cats = self.CARBON_EMISSION_FACTORS["scope3_categories"]
+            cat_rows = "\n".join(
+                f"| `{k}` | {v['description']} | {v['calculation_method'][:60]}... |"
+                for k, v in cats.items()
+            )
+            scope3_section = f"""
+## Scope 3 Supply Chain Categories
+
+| Category | Description | Method |
+|----------|-------------|--------|
+{cat_rows}
+
+Use `scope3_category=<category>` to get full details and data requirements.
+"""
+
+        # Routing recommendations
+        tradeoffs = self.CARBON_EMISSION_FACTORS["routing_optimization"]["carbon_vs_cost_tradeoffs"]
+        corridors = self.CARBON_EMISSION_FACTORS["routing_optimization"]["green_corridors"]
+        tradeoffs_txt = "\n".join(f"- {t}" for t in tradeoffs)
+        corridors_txt = "\n".join(f"- {c}" for c in corridors)
+
+        # Transport modes summary (when no specific mode requested)
+        modes_summary = ""
+        if not transport_mode:
+            mode_rows = "\n".join(
+                f"| {k.replace('_', ' ').title()} | {v['kg_co2e_per_tonne_km']} | {v['relative_impact'].replace('_', ' ')} |"
+                for k, v in self.CARBON_EMISSION_FACTORS["transport_modes"].items()
+            )
+            modes_summary = f"""
+## Emission Factors by Transport Mode
+
+| Mode | kg CO₂e / tonne-km | Relative Impact |
+|------|-------------------|----------------|
+{mode_rows}
+
+*Source: GHG Protocol GLEC Framework 2.0*
+"""
+
+        result = f"""# Supply Chain Carbon Assessment
+{calc_section}{comparison_section}{scope3_section}{modes_summary}
+## Carbon-Aware Routing Trade-offs
+
+{tradeoffs_txt}
+
+## High-Efficiency Green Corridors
+
+{corridors_txt}
+
+## Integration with Planning
+
+- Add `carbon_kg_co2e` to shipment records via `normalize_carrier_tracking`
+- Set carbon budget constraints in `get_continuous_planning_template(planning_type="constraint_management")`
+- Score suppliers on Scope 1+2 intensity via `get_supplier_intelligence(risk_category="esg_scores")`
+- Report Scope 3 Cat 4 in your S&OP dashboard via `get_continuous_planning_template(planning_type="sop_integration")`
+
+## Regulatory Context
+
+- **EU CBAM**: Carbon Border Adjustment Mechanism — requires Scope 3 data for imports
+- **CSRD**: EU Corporate Sustainability Reporting Directive — mandatory Scope 3 from 2025
+- **SEC Climate Disclosure**: Proposed Scope 3 disclosure for large US public companies
+- **Science-Based Targets (SBTi)**: Requires Scope 3 reduction pathway for net-zero commitments"""
 
         return [TextContent(type="text", text=result)]
 
