@@ -2693,15 +2693,24 @@ Use `get_business_onboarding_guide(guide_section="use_case_guide", business_type
             recommendations.append("Consider using .call{value: amount}('') instead of .transfer() for future compatibility")
 
         # Check for access control
-        access_patterns = ["onlyowner", "onlyrole", "modifier", "require(msg.sender"]
-        has_access_control = any(p in code_lower for p in access_patterns)
+        # Look for concrete authorization patterns rather than generic modifiers
+        access_patterns = [
+            "onlyowner",          # OpenZeppelin Ownable-style modifier
+            "onlyrole",           # OpenZeppelin AccessControl-style modifier
+            "hasrole(",           # AccessControl role checks
+            "accesscontrol",      # Inheritance from AccessControl
+            "ownable",            # Inheritance from Ownable
+        ]
+        # Explicit require checks on msg.sender, e.g. require(msg.sender == owner)
+        has_sender_require = bool(re.search(r'require\s*\(\s*msg\.sender\s*==', code_lower))
+        has_access_control = has_sender_require or any(p in code_lower for p in access_patterns)
         has_function_declarations = bool(re.search(r'\bfunction\s+\w+\s*\(', code))
         if not has_access_control and has_function_declarations:
             issues.append({
                 "severity": "high",
                 "type": "missing_access_control",
                 "message": "No access control patterns detected",
-                "fix": "Add modifiers (onlyOwner, role-based) to restrict sensitive functions",
+                "fix": "Add modifiers (onlyOwner, role-based) or require checks (e.g., require(msg.sender == owner)) to restrict sensitive functions",
             })
 
         # Check for events
