@@ -234,12 +234,18 @@ def validate_dict(data: Dict[str, Any]) -> bool:
 pragma solidity ^0.8.19;
 
 contract SimpleTracker {
+    address public owner;
     mapping(uint256 => string) public items;
     uint256 public itemCount;
 
     event ItemAdded(uint256 indexed id, string name);
 
+    constructor() {
+        owner = msg.sender;
+    }
+
     modifier onlyOwner() {
+        require(msg.sender == owner, "Not contract owner");
         _;
     }
 
