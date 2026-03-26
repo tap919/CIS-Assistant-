@@ -3904,13 +3904,32 @@ D365 OData ──┘
         # Update or retrieve planning session if session_id provided
         session_info = ""
         if session_id:
+            # When creating a new planning session, require planning_type to avoid
+            # ambiguous "empty" sessions with planning_type=None.
             if session_id not in self.planning_sessions:
+                if not planning_type:
+                    return [
+                        TextContent(
+                            type="text",
+                            text=(
+                                "Error: 'planning_type' is required when creating a new "
+                                f"planning session (session_id='{session_id}').\n\n"
+                                "Please provide a planning_type (for example, 'procurement', "
+                                "'logistics', or another supported type) and retry."
+                            ),
+                        )
+                    ]
                 self.planning_sessions[session_id] = {
                     "created": datetime.now().isoformat(),
                     "planning_type": planning_type,
                     "context": {},
                 }
             session = self.planning_sessions[session_id]
+
+            # If the session exists but has no planning_type yet, backfill it from
+            # the current request (if provided) to avoid ambiguous state.
+            if planning_type and not session.get("planning_type"):
+                session["planning_type"] = planning_type
             if context_update and isinstance(context_update, dict):
                 session["context"].update(context_update)
                 session["last_updated"] = datetime.now().isoformat()
