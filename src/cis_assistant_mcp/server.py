@@ -3758,10 +3758,20 @@ Add `carbon_kg_co2e` to every shipment record:
             src = self.ERP_SYSTEMS[source_erp]
             tgt = self.ERP_SYSTEMS[target_erp]
 
-            if data_category != "all" and data_category in self.ERP_FIELD_MAPPINGS:
-                categories = {data_category: self.ERP_FIELD_MAPPINGS[data_category]}
-            else:
+            # Validate data_category to avoid silently falling back to all categories on typos
+            if data_category != "all" and data_category not in self.ERP_FIELD_MAPPINGS:
+                valid_categories = ", ".join(["all"] + list(self.ERP_FIELD_MAPPINGS.keys()))
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Unknown data category: '{data_category}'. Valid options: {valid_categories}",
+                    )
+                ]
+
+            if data_category == "all":
                 categories = self.ERP_FIELD_MAPPINGS
+            else:
+                categories = {data_category: self.ERP_FIELD_MAPPINGS[data_category]}
 
             mapping_sections = []
             for cat_name, cat_data in categories.items():
