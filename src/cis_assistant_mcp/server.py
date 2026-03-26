@@ -3775,7 +3775,7 @@ Add `carbon_kg_co2e` to every shipment record:
                     mapping_sections.append(
                         f"### {cat_name.replace('_', ' ').title()}\n\n"
                         f"| Logical Field | {src['name']} | {tgt['name']} |\n"
-                        f"|--------------|{'—' * (len(src['name']) + 2)}|{'—' * (len(tgt['name']) + 2)}|\n"
+                        f"|--------------|----------------|----------------|\n"
                         f"{rows}"
                     )
 
